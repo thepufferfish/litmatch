@@ -1,0 +1,5 @@
+uvicorn[standard]
+fastapi[standard]
+sqlmodel>=0.0.24
+psycopg2-binary>=2.9.10
+sqlalchemy<2.1.0,>=2.0.14
