@@ -7,7 +7,7 @@ from sqlmodel import Session, create_engine, and_, or_, select
 from etl.transform import parse_publish_date, encode_rating
 from backend.db.models import Book, Genre, BookGenreLink, Review
 
-DATABASE_URL = os.environ.get("DATABASE_URL", "postgresql://bookuser:bookpassword@localhost:5432/bookdb")
+DATABASE_URL = os.environ.get("DATABASE_URL")
 
 engine = create_engine(DATABASE_URL, echo=True)
 
