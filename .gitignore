@@ -166,6 +166,7 @@ cython_debug/
 
 # VSCode files
 .code-workspace
+.vscode
 
 # Windsurf files
 .windsurf/
