@@ -1,6 +1,8 @@
 import streamlit as st
-from api import get_books
-from utils import get_query_param, set_query_params
+import requests
+
+from api import get_books, login, register
+from utils import get_query_param, set_query_params, logout, is_logged_in, get_user_id
 from book_page import show_book_detail
 
 st.set_page_config(page_title='Book Explorer', layout='wide')
@@ -9,6 +11,33 @@ st.set_page_config(page_title='Book Explorer', layout='wide')
 st.sidebar.title('📖 Browse Books')
 # genre_filter = st.sidebar.selectbox('Filter by Genre', options=['All'] + ['Fiction', 'Nonfiction', 'Sci-Fi', 'Fantasy'])
 search_query = st.sidebar.text_input('Search', '')
+
+st.sidebar.title("User Login")
+
+if is_logged_in():
+    st.sidebar.markdown(f"✅ Logged in as: **{st.session_state['user']['username']}**")
+    if st.sidebar.button("Log out"):
+        logout()
+else:
+    with st.sidebar.form("login_form"):
+        username = st.text_input("Username")
+        password = st.text_input("Password", type="password")
+        submitted = st.form_submit_button("Login")
+        if submitted:
+            if not login(username, password):
+                st.sidebar.error("Invalid credentials")
+
+with st.sidebar.expander("Don't have an account? Register"):
+    with st.form("register_form"):
+        reg_username = st.text_input("New Username")
+        reg_password = st.text_input("New Password", type="password")
+        submitted = st.form_submit_button("Register")
+        if submitted:
+            if len(reg_password) < 6:
+                st.warning("Password must be at least 6 characters.")
+            else:
+                register(reg_username, reg_password)
+                
 
 # Routing
 book_id = st.query_params.get('book_id', None)

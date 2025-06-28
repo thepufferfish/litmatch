@@ -1,4 +1,5 @@
 from sqlmodel import Field, Relationship, SQLModel
+from pydantic import EmailStr
 from datetime import date, datetime
 
 class BookGenreLink(SQLModel, table=True):
@@ -37,9 +38,20 @@ class Review(SQLModel, table=True):
 
     book: Book = Relationship(back_populates='reviews')
 
-class User(SQLModel, table=True):
+class UserBase(SQLModel):
+    username: str = Field(unique=True)
+    # email: EmailStr = Field(unique=True, index=True)
+    # is_active: bool = True
+    # is_superuser: bool = False
+
+class UserCreate(UserBase):
+    password: str
+
+class UserPublic(UserBase):
     id: int | None = Field(default=None, primary_key=True)
-    username: str
+
+class User(UserBase, table=True):
+    id: int | None = Field(default=None, primary_key=True)
     password_hash: str
 
     user_ratings: list['UserRating'] = Relationship(back_populates='user')
