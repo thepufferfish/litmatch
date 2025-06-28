@@ -4,8 +4,15 @@ import requests
 API_BASE = 'http://localhost:80'
 
 @st.cache_data
-def get_books():
-    return requests.get(f'{API_BASE}/books').json()
+def get_genres():
+    return requests.get(f'{API_BASE}/genres').json()
+
+@st.cache_data
+def get_books(genre: int = None):
+    url = f'{API_BASE}/books'
+    if genre:
+        url += f'/?genre={genre}'
+    return requests.get(url).json()
 
 @st.cache_data
 def get_book(book_id):

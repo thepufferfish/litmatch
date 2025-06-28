@@ -1,15 +1,18 @@
 import streamlit as st
 import requests
 
-from api import get_books, login, register
-from utils import get_query_param, set_query_params, logout, is_logged_in, get_user_id
+from api import get_books, login, register, get_genres
+from utils import (
+    get_query_param, set_query_params, logout, is_logged_in, get_user_id,
+)
 from book_page import show_book_detail
 
 st.set_page_config(page_title='Book Explorer', layout='wide')
 
 # Sidebar
 st.sidebar.title('📖 Browse Books')
-# genre_filter = st.sidebar.selectbox('Filter by Genre', options=['All'] + ['Fiction', 'Nonfiction', 'Sci-Fi', 'Fantasy'])
+genres = get_genres()
+genre_filter = st.sidebar.selectbox('Filter by Genre', options=['All'] + [genre['name'] for genre in genres])
 search_query = st.sidebar.text_input('Search', '')
 
 st.sidebar.title("User Login")
@@ -37,7 +40,6 @@ with st.sidebar.expander("Don't have an account? Register"):
                 st.warning("Password must be at least 6 characters.")
             else:
                 register(reg_username, reg_password)
-                
 
 # Routing
 book_id = st.query_params.get('book_id', None)
@@ -46,9 +48,11 @@ if book_id:
     st.stop()
 
 # Pagination
-books = get_books()
-# if genre_filter != 'All':
-#     books = [b for b in books if b.get('genre') == genre_filter]
+if genre_filter != 'All':
+    genre = [genre['id'] for genre in genres if genre['name'] == genre_filter][0]
+    books = get_books(genre=genre)
+else:
+    books = get_books()
 if search_query:
     books = [b for b in books if search_query.lower() in b['title'].lower()]
 

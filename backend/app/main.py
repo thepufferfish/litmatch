@@ -1,13 +1,15 @@
 import os
 
 from fastapi import FastAPI, Depends, HTTPException, Query
-from sqlmodel import SQLModel, Session, create_engine, select
+from sqlmodel import Session, create_engine, select
 from passlib.context import CryptContext
 
-from backend import database
-from backend.db.models import User, Book, Review, UserCreate, UserPublic
+# from backend import database
+from backend.db.models import User, UserCreate, UserPublic, Book, Review, Genre
 
-DATABASE_URL = os.environ.get("DATABASE_URL", "postgresql://bookuser:bookpassword@localhost:5432/bookdb")
+DATABASE_URL = os.environ.get(
+    "DATABASE_URL", "postgresql://bookuser:bookpassword@localhost:5432/bookdb"
+)
 
 engine = create_engine(DATABASE_URL)
 
@@ -41,8 +43,18 @@ def login(*, session: Session = Depends(get_session), user_in: UserCreate):
     return {'id': user.id, 'username': user.username}
 
 @app.get("/books/", response_model=list[Book])
-def read_books(*, session=Depends(get_session), offset: int = 0, limit: int = Query(default=100, le=100)):
-    books = session.exec(select(Book).offset(offset).limit(limit)).all()
+def read_books(
+    *,
+    session=Depends(get_session),
+    offset: int = 0,
+    limit: int = Query(default=100, le=100),
+    genre: int | None = None
+):
+    if genre:
+        stmt = select(Book).join(Book.genres).where(Genre.id == genre).offset(offset).limit(limit)
+    else:
+        stmt = select(Book).offset(offset).limit(limit)
+    books = session.exec(stmt).all()
     return books
 
 @app.get("/books/{book_id}", response_model=Book)
@@ -58,3 +70,8 @@ def read_reviews(*, session=Depends(get_session), book_id: int):
     if not reviews:
         raise HTTPException(status_code=404, detail="Reviews for book not found")
     return reviews
+
+@app.get("/genres/", response_model=list[Genre])
+def read_genres(*, session=Depends(get_session)):
+    genres = session.exec(select(Genre)).all()
+    return genres
