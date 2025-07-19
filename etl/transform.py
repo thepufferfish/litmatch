@@ -44,4 +44,4 @@ def encode_rating(rating: str) -> int:
     elif rating == 'Pan':
         return 1
     else:
-        raise Exception(f'Error encoding review rating: unknown rating {rating}')
+        raise ValueError(f'Error encoding review rating: unknown rating {rating}')

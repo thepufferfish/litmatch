@@ -1,5 +1,5 @@
 import streamlit as st
-from api import get_book, get_reviews
+from api import get_book, get_reviews, add_rating, get_ratings
 from utils import set_query_params, is_logged_in, get_user_id
 
 def show_book_detail(book_id):
@@ -10,6 +10,18 @@ def show_book_detail(book_id):
     st.markdown(f'*by {book['author']}*')
     st.image(book['cover'], width=200)
     st.markdown(book.get('description', '_No description available._'))
+
+    if is_logged_in():
+        user_id = get_user_id()
+        user_rating = get_ratings(user_id, book_id)
+        if user_rating:
+            st.markdown(f'{'\u2b50'*int(user_rating[0].get('rating', 0))}')
+        else:
+            rating = st.radio("Your Rating", [1, 2, 3, 4, 5], horizontal=True, key=f"rate_{book_id}")
+            if st.button("Submit Rating"):
+                user_rating = add_rating(user_id, book_id, rating)
+    else:
+        st.info("Login to submit a rating.")
 
     st.markdown('---')
     st.markdown('### 📝 Reviews')
@@ -25,18 +37,3 @@ def show_book_detail(book_id):
         st.markdown('_No reviews yet._')
 
     st.markdown('[\u2b05 Back to list](/)')
-
-    # if is_logged_in():
-    #     user_id = get_user_id()
-    #     rating = st.radio("Your Rating", [1, 2, 3, 4, 5], horizontal=True, key=f"rate_{book_id}")
-    #     if st.button("Submit Rating"):
-    #         res = requests.post(
-    #             f"{API_BASE}/ratings",
-    #             json={"user_id": user_id, "book_id": book_id, "rating": rating}
-    #         )
-    #         if res.status_code == 200:
-    #             st.success("Rating saved!")
-    #         else:
-    #             st.error("Failed to save rating.")
-    # else:
-    #     st.info("Login to submit a rating.")

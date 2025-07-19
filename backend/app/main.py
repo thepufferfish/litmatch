@@ -1,11 +1,13 @@
 import os
 
+from datetime import datetime
+
 from fastapi import FastAPI, Depends, HTTPException, Query
 from sqlmodel import Session, create_engine, select
 from passlib.context import CryptContext
 
 # from backend import database
-from backend.db.models import User, UserCreate, UserPublic, Book, Review, Genre
+from backend.db.models import User, UserCreate, UserPublic, Book, Review, Genre, UserRating
 
 DATABASE_URL = os.environ.get(
     "DATABASE_URL", "postgresql://bookuser:bookpassword@localhost:5432/bookdb"
@@ -48,13 +50,16 @@ def read_books(
     session=Depends(get_session),
     offset: int = 0,
     limit: int = Query(default=100, le=100),
-    genre: int | None = None
+    genre: int | None = None,
+    user_id: int | None = None
 ):
     if genre:
-        stmt = select(Book).join(Book.genres).where(Genre.id == genre).offset(offset).limit(limit)
+        stmt = select(Book).join(Book.genres).where(Genre.id == genre)
+    if user_id:
+        stmt = stmt.join(Book.user_ratings).where(UserRating.user_id == user_id)
     else:
-        stmt = select(Book).offset(offset).limit(limit)
-    books = session.exec(stmt).all()
+        stmt = select(Book)
+    books = session.exec(stmt.offset(offset).limit(limit)).all()
     return books
 
 @app.get("/books/{book_id}", response_model=Book)
@@ -75,3 +80,42 @@ def read_reviews(*, session=Depends(get_session), book_id: int):
 def read_genres(*, session=Depends(get_session)):
     genres = session.exec(select(Genre)).all()
     return genres
+
+@app.get('/ratings/', response_model=list[UserRating])
+def read_ratings(*, session=Depends(get_session), user_id: int | None = None, book_id: int | None = None):
+    stmt = select(UserRating)
+    if user_id:
+        stmt = stmt.where(UserRating.user_id == user_id)
+    if book_id:
+        stmt = stmt.where(UserRating.book_id == book_id)
+    ratings = session.exec(stmt).all()
+    if not ratings:
+        raise HTTPException(status_code=404, detail="Ratings for book not found")
+    return ratings
+
+@app.post('/ratings/', response_model=UserRating)
+def add_rating(*, session=Depends(get_session), rating_in: UserRating):
+    stmt = select(UserRating).where(UserRating.user_id == rating_in.user_id).where(UserRating.book_id == rating_in.book_id)
+    rating = session.exec(stmt).first()
+    if rating:
+        rating.rating = rating_in.rating
+        rating.updated_at = datetime.now()
+    else:
+        # TODO: figure out why this doesn't work
+        # rating = UserRating.model_validate(
+        #     rating_in,
+        #     update={
+        #         'updated_at': datetime.now(),
+        #         'created_at': datetime.now()
+        #     }
+        # )
+        rating = UserRating(
+            user_id=rating_in.user_id,
+            book_id=rating_in.book_id,
+            rating=rating_in.rating,
+            created_at=datetime.now(),
+            updated_at=datetime.now()
+        )
+    session.add(rating)
+    session.commit()
+    return rating

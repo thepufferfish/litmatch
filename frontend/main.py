@@ -1,7 +1,7 @@
 import streamlit as st
 import requests
 
-from api import get_books, login, register, get_genres
+from api import get_books, login, register, get_genres, get_ratings, add_rating
 from utils import (
     get_query_param, set_query_params, logout, is_logged_in, get_user_id,
 )
@@ -70,6 +70,15 @@ for book in books[start:end]:
     with cols[1]:
         st.markdown(f'### [{book['title']}](?book_id={book['id']})')
         st.markdown(f'*by {book['author']}*')
+        if is_logged_in():
+            user_id = get_user_id()
+            user_rating = get_ratings(user_id, book['id'])
+            if user_rating:
+                st.markdown(f'{'\u2b50'*int(user_rating[0].get('rating', 0))}')
+            else:
+                rating = st.radio("Your Rating", [1, 2, 3, 4, 5], horizontal=True, key=f"rate_{book['id']}")
+                if st.button("Submit Rating", key=f"submit_rating_{book['id']}"):
+                    user_rating = add_rating(user_id, book['id'], rating)
 
 # Pagination controls
 st.markdown('---')
