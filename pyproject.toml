@@ -1,0 +1,11 @@
+[project]
+name = "litmatch"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "dagster>=1.11.15",
+    "dagster-dg-cli>=1.11.15",
+    "dagster-webserver>=1.11.15",
+]
