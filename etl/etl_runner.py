@@ -21,7 +21,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-RAW_DATA_DIR = "data/raw/"
+RAW_DATA_DIR = "/home/framework/.local/share/containers/storage/volumes/litmatch_shared_scraper_output/_data/raw"
 
 # DATABASE_URL = os.environ.get("DATABASE_URL", "postgresql://bookuser:bookpass@localhost:5432/bookdb")
 
@@ -34,7 +34,7 @@ def extract(file_path: str) -> list[dict]:
             try:
                 data.append(json.loads(line))
             except json.JSONDecodeError:
-                print(f"Error parsing line {line_number}: {line.strip()}")
+                logger.error(f"Error parsing line {line_number}: {line.strip()}")
     return data
     # logger.info(f"Starting extraction from: {file}")
     # try:
@@ -50,6 +50,8 @@ def etl():
     logger.info("Starting ETL process")
     try:
         fn = os.path.join(RAW_DATA_DIR, "books.jsonl")
+        if not os.path.exists(fn):
+            logger.error('Raw data path does not exist')
         logger.info(f"Input file: {fn}")
         
         raw_data = extract(fn)

@@ -1,4 +1,5 @@
 import os
+import logging
 # import pandas as pd
 
 from datetime import date, datetime
@@ -11,13 +12,26 @@ DATABASE_URL = os.environ.get("DATABASE_URL", "postgresql://bookuser:bookpasswor
 
 engine = create_engine(DATABASE_URL, echo=True)
 
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(),
+        logging.FileHandler('etl.log')
+    ]
+)
+logger = logging.getLogger(__name__)
+
 def load_books(data: dict | list[dict]) -> None:
 
     if isinstance(data, dict):
         data = [data]
 
+    logger.info(f'Found {len(data)} books to load')
+
     with Session(engine) as session:
         for record in data:
+            logger.debug(f'Loading {record['title']}')
             book_id = load_book(session, record)
             if book_id:
                 load_genres(session, record['genres'], book_id)
