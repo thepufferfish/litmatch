@@ -1,42 +1,71 @@
 from sqlmodel import Field, Relationship, SQLModel
 from pydantic import EmailStr
 from datetime import date, datetime
+from pgvector.sqlalchemy import Vector
 
 class BookGenreLink(SQLModel, table=True):
-    book_id: int| None = Field(foreign_key='book.id', primary_key=True)
-    genre_id: int| None = Field(foreign_key='genre.id', primary_key=True)
+    book_id: int | None = Field(foreign_key='book.id', primary_key=True)
+    genre_id: int | None = Field(foreign_key='genre.id', primary_key=True)
+
+class Author(SQLModel, table=True):
+    id: int | None = Field(default=None, primary_key=True)
+    name: str = Field(unique=True)
+
+    books: list['Book'] = Relationship(back_populates='author')
+
+class Publisher(SQLModel, table=True):
+    id: int | None = Field(default=None, primary_key=True)
+    name: str = Field(unique=True)
+
+    books: list['Book'] = Relationship(back_populates='publisher')
 
 class Book(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
     title: str
-    author: str
-    publisher: str
+    author_id: int | None = Field(default=None, foreign_key='author.id')
+    publisher_id: int | None = Field(default=None, foreign_key='publisher.id')
     publish_date: date | None
     description: str
     url: str = Field(unique=True)
     cover: str | None
     last_scraped: datetime | None = Field(default=datetime.now())
 
+    author: Author | None = Relationship(back_populates='books')
+    publisher: Publisher | None = Relationship(back_populates='books')
     genres: list['Genre'] = Relationship(back_populates='books', link_model=BookGenreLink)
     reviews: list['Review'] = Relationship(back_populates='book')
     user_ratings: list['UserRating'] = Relationship(back_populates='book')
 
 class Genre(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
-    name: str
+    name: str = Field(unique=True)
 
-    books: list[Book] = Relationship(back_populates='genres', link_model=BookGenreLink)
+    books: list['Book'] = Relationship(back_populates='genres', link_model=BookGenreLink)
+
+class Critic(SQLModel, table=True):
+    id: int | None = Field(default=None, primary_key=True)
+    name: str = Field(unique=True)
+
+    reviews: list['Review'] = Relationship(back_populates='critic')
+
+class Publication(SQLModel, table=True):
+    id: int | None = Field(default=None, primary_key=True)
+    name: str = Field(unique=True)
+
+    reviews: list['Review'] = Relationship(back_populates='publication')
 
 class Review(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
     book_id: int = Field(foreign_key='book.id')
-    critic: str
-    publication: str
+    critic_id: int | None = Field(default=None, foreign_key='critic.id')
+    publication_id: int | None = Field(default=None, foreign_key='publication.id')
     rating: int
     review: str
     url: str = Field(unique=True)
 
     book: Book = Relationship(back_populates='reviews')
+    critic: Critic | None = Relationship(back_populates='reviews')
+    publication: Publication | None = Relationship(back_populates='reviews')
 
 class UserBase(SQLModel):
     username: str = Field(unique=True)

@@ -3,14 +3,16 @@ name = "litmatch"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.12"
 dependencies = [
     "dagster>=1.11.15",
     "dagster-dg-cli>=1.11.15",
     "dagster-webserver>=1.11.15",
     "pandas>=2.3.3",
+    "pgvector>=0.4.1",
     "psycopg2>=2.9.11",
     "sqlmodel>=0.0.27",
+    "tensorflow-hub>=0.16.1",
     "tldextract>=5.3.0",
 ]
 
