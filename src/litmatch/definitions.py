@@ -9,14 +9,26 @@ from litmatch.defs.assets.validate import validate_raw_books
 from litmatch.defs.resources.database import DatabaseResource
 from litmatch.defs.resources.path import PathResource
 
-_DATABASE_URL = os.environ.get(
-    "DATABASE_URL",
-    "postgresql://bookuser:bookpassword@localhost:5432/bookdb",
-)
-_RAW_DATA_DIR = os.environ.get(
-    "RAW_DATA_DIR",
-    "scraper/output/raw",
-)
+
+def _get_database_url() -> str:
+    """Read DATABASE_URL from environment, failing fast if absent.
+
+    Raises:
+        EnvironmentError: If DATABASE_URL is not set.
+    """
+    url = os.environ.get("DATABASE_URL")
+    if not url:
+        raise EnvironmentError(
+            "DATABASE_URL environment variable is required but not set. "
+            "Set it to a PostgreSQL connection string, e.g. "
+            "postgresql://user:pass@host:5432/dbname"
+        )
+    return url
+
+
+def _get_raw_data_dir() -> str:
+    """Read RAW_DATA_DIR from environment with a safe default."""
+    return os.environ.get("RAW_DATA_DIR", "scraper/output/raw")
 
 
 @dg.definitions
@@ -24,7 +36,7 @@ def defs():
     return dg.Definitions(
         assets=[raw_books, validate_raw_books, cleaned_books, load_books],
         resources={
-            "database": DatabaseResource(connection_string=_DATABASE_URL),
-            "path": PathResource(raw_data_dir=_RAW_DATA_DIR),
+            "database": DatabaseResource(connection_string=_get_database_url()),
+            "path": PathResource(raw_data_dir=_get_raw_data_dir()),
         },
     )

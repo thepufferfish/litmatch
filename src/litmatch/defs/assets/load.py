@@ -37,17 +37,19 @@ def load_books(
 
     with Session(engine) as session:
         for record in cleaned_books:
+            savepoint = session.begin_nested()
             try:
                 was_upserted = upsert_book(session, record)
                 if was_upserted:
                     inserted += 1
                 else:
                     skipped += 1
+                savepoint.commit()
             except Exception as err:
                 context.log.error(
                     f"Error loading {record.get('title', 'unknown')}: {err}"
                 )
-                session.rollback()
+                savepoint.rollback()
                 continue
 
         session.commit()

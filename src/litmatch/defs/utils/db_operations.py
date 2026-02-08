@@ -12,6 +12,7 @@ when the full Python path is available.
 """
 from __future__ import annotations
 
+import functools
 import importlib
 from types import ModuleType
 from typing import TYPE_CHECKING
@@ -29,15 +30,11 @@ if TYPE_CHECKING:
         Review,
     )
 
-_models_module: ModuleType | None = None
 
-
+@functools.lru_cache(maxsize=1)
 def _models() -> ModuleType:
     """Lazily import and cache the backend.db.models module."""
-    global _models_module
-    if _models_module is None:
-        _models_module = importlib.import_module("backend.db.models")
-    return _models_module
+    return importlib.import_module("backend.db.models")
 
 
 def _get_or_create_author(session: Session, name: str) -> Author:
@@ -118,7 +115,11 @@ def _prepare_reviews(session: Session, reviews: list[dict]) -> list[Review]:
     seen_urls: set[str] = set()
 
     for review_data in reviews:
-        url = review_data.get("url", "")
+        raw_url = review_data.get("url", "")
+        # Convert empty strings to None for proper NULL handling in DB.
+        # NULL values don't violate unique constraints (NULL != NULL in SQL),
+        # allowing multiple reviews without URLs on the same book.
+        url: str | None = raw_url if raw_url else None
 
         # Deduplicate by non-empty URL
         if url and url in seen_urls:
@@ -178,6 +179,7 @@ def upsert_book(session: Session, record: dict) -> bool:
         existing_book.publish_date = record["publish_date"]
         existing_book.description = record["description"]
         existing_book.cover = record["cover"]
+        existing_book.is_fiction = record.get("is_fiction")
         existing_book.last_scraped = record["last_scraped"]
         book = existing_book
     else:
@@ -189,6 +191,7 @@ def upsert_book(session: Session, record: dict) -> bool:
             description=record["description"],
             url=record["url"],
             cover=record["cover"],
+            is_fiction=record.get("is_fiction"),
             last_scraped=record["last_scraped"],
         )
         session.add(book)

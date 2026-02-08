@@ -12,7 +12,11 @@ from backend.db.models import Book, Genre, Author, Publisher, Review, Critic, Pu
 
 RAW_DATA_DIR = '/home/framework/.local/share/containers/storage/volumes/litmatch_shared_scraper_output/_data/raw'
 
-DATABASE_URL = os.environ.get('DATABASE_URL', 'postgresql://bookuser:bookpassword@localhost:5432/bookdb')
+# NOTE: This file is deprecated and not imported by active code.
+# Kept for reference only. Use the modular assets in assets/ directory instead.
+DATABASE_URL = os.environ.get('DATABASE_URL')
+if not DATABASE_URL:
+    raise RuntimeError("DATABASE_URL environment variable must be set")
 
 engine = create_engine(DATABASE_URL, echo=True)
 

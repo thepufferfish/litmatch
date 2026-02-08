@@ -7,7 +7,7 @@ import json
 import os
 import pytest
 from datetime import date, datetime
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import dagster as dg
 from sqlalchemy import create_engine
@@ -277,3 +277,85 @@ class TestLoadBooksAsset:
         with Session(engine) as session:
             books = session.exec(select(Book)).all()
             assert len(books) == 0
+
+    def test_error_in_one_record_does_not_lose_others(self) -> None:
+        """HIGH-4: A failing record should not roll back previously committed records.
+
+        Uses savepoints so each record is independently committed.
+        """
+        from litmatch.defs.assets.load import load_books
+        from backend.db.models import Book
+
+        db_resource, conn_str = self._make_db_resource()
+
+        good_record = {
+            "title": "Good Book",
+            "author": "Good Author",
+            "publisher": "Good Publisher",
+            "publish_date": date(2025, 1, 1),
+            "description": "A good book.",
+            "genres": ["Fiction"],
+            "url": "https://bookmarks.reviews/reviews/good-book/",
+            "cover": None,
+            "last_scraped": datetime(2025, 10, 13, 11, 0, 0),
+            "is_fiction": True,
+            "reviews": [],
+        }
+        # This record will cause an error (missing required 'url' key)
+        bad_record = {
+            "title": "Bad Book",
+            "author": "Bad Author",
+            "publisher": "Bad Publisher",
+            "publish_date": date(2025, 1, 1),
+            "description": "A bad book.",
+            "genres": ["Fiction"],
+            # Missing 'url' key entirely -- will cause KeyError in upsert_book
+            "cover": None,
+            "last_scraped": datetime(2025, 10, 13, 11, 0, 0),
+            "is_fiction": True,
+            "reviews": [],
+        }
+        good_record_2 = {
+            "title": "Another Good Book",
+            "author": "Good Author",
+            "publisher": "Good Publisher",
+            "publish_date": date(2025, 2, 1),
+            "description": "Another good book.",
+            "genres": ["Fiction"],
+            "url": "https://bookmarks.reviews/reviews/good-book-2/",
+            "cover": None,
+            "last_scraped": datetime(2025, 10, 13, 11, 0, 0),
+            "is_fiction": True,
+            "reviews": [],
+        }
+
+        context = dg.build_asset_context(resources={"database": db_resource})
+        load_books(context, cleaned_books=[good_record, bad_record, good_record_2])
+
+        engine = create_engine(conn_str)
+        with Session(engine) as session:
+            books = session.exec(select(Book)).all()
+            # Both good records should be saved; bad record should not affect them
+            assert len(books) == 2
+            titles = {b.title for b in books}
+            assert titles == {"Good Book", "Another Good Book"}
+
+
+class TestDefinitionsFailFast:
+    """HIGH-1: definitions.py must fail fast when DATABASE_URL is missing."""
+
+    def test_missing_database_url_raises(self) -> None:
+        """If DATABASE_URL is not set, definitions should raise, not use defaults."""
+        with patch.dict(os.environ, {}, clear=True):
+            # Remove DATABASE_URL and RAW_DATA_DIR if present
+            env = os.environ.copy()
+            env.pop("DATABASE_URL", None)
+            env.pop("RAW_DATA_DIR", None)
+
+            with patch.dict(os.environ, env, clear=True):
+                with pytest.raises(
+                    EnvironmentError,
+                    match="DATABASE_URL",
+                ):
+                    from litmatch.definitions import _get_database_url
+                    _get_database_url()

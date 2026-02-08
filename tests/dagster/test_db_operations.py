@@ -30,6 +30,7 @@ def _make_transformed_record(
     url: str = "https://bookmarks.reviews/reviews/test-book/",
     cover: str | None = None,
     last_scraped: datetime | None = None,
+    is_fiction: bool | None = True,
     reviews: list[dict] | None = None,
 ) -> dict:
     """Helper to create a transformed (post-transform) record."""
@@ -43,7 +44,7 @@ def _make_transformed_record(
         "url": url,
         "cover": cover,
         "last_scraped": last_scraped or datetime(2025, 10, 13, 11, 0, 0),
-        "is_fiction": True,
+        "is_fiction": is_fiction,
         "reviews": reviews or [
             {
                 "critic": "John Self",
@@ -308,3 +309,154 @@ class TestUpsertBook:
             publications = session.exec(select(Publication)).all()
             assert len(publications) == 1
             assert publications[0].name == "Financial Times"
+
+    def test_is_fiction_persists_on_insert(self) -> None:
+        """HIGH-3: is_fiction field should be stored in the database."""
+        from litmatch.defs.utils.db_operations import upsert_book
+        from sqlmodel import Session, select
+        from backend.db.models import Book
+
+        engine = _create_engine_and_tables()
+        record = _make_transformed_record(is_fiction=True)
+
+        with Session(engine) as session:
+            upsert_book(session, record)
+            session.commit()
+
+        with Session(engine) as session:
+            book = session.exec(select(Book)).first()
+            assert book is not None
+            assert book.is_fiction is True
+
+    def test_is_fiction_persists_on_update(self) -> None:
+        """HIGH-3: is_fiction should be updated when book is re-scraped."""
+        from litmatch.defs.utils.db_operations import upsert_book
+        from sqlmodel import Session, select
+        from backend.db.models import Book
+
+        engine = _create_engine_and_tables()
+        record_old = _make_transformed_record(
+            is_fiction=True,
+            last_scraped=datetime(2025, 1, 1),
+        )
+        record_new = _make_transformed_record(
+            is_fiction=False,
+            last_scraped=datetime(2025, 10, 13),
+        )
+
+        with Session(engine) as session:
+            upsert_book(session, record_old)
+            session.commit()
+
+        with Session(engine) as session:
+            upsert_book(session, record_new)
+            session.commit()
+
+        with Session(engine) as session:
+            book = session.exec(select(Book)).first()
+            assert book is not None
+            assert book.is_fiction is False
+
+    def test_is_fiction_none_for_unclassified(self) -> None:
+        """HIGH-3: Books with no fiction classification should have is_fiction=None."""
+        from litmatch.defs.utils.db_operations import upsert_book
+        from sqlmodel import Session, select
+        from backend.db.models import Book
+
+        engine = _create_engine_and_tables()
+        record = _make_transformed_record(is_fiction=None)
+
+        with Session(engine) as session:
+            upsert_book(session, record)
+            session.commit()
+
+        with Session(engine) as session:
+            book = session.exec(select(Book)).first()
+            assert book is not None
+            assert book.is_fiction is None
+
+    def test_multiple_empty_urls_same_book(self) -> None:
+        """HIGH-5: Multiple reviews with empty URLs on the same book must all be stored.
+
+        Empty URLs should be converted to None so they don't violate
+        the unique constraint (NULL != NULL in SQL).
+        """
+        from litmatch.defs.utils.db_operations import upsert_book
+        from sqlmodel import Session, select
+        from backend.db.models import Review
+
+        engine = _create_engine_and_tables()
+        record = _make_transformed_record(reviews=[
+            {
+                "critic": "Critic A",
+                "publication": "Pub A",
+                "rating": 4,
+                "review": "First review with no URL.",
+                "url": "",
+            },
+            {
+                "critic": "Critic B",
+                "publication": "Pub B",
+                "rating": 3,
+                "review": "Second review with no URL.",
+                "url": "",
+            },
+        ])
+
+        with Session(engine) as session:
+            upsert_book(session, record)
+            session.commit()
+
+        with Session(engine) as session:
+            reviews = session.exec(select(Review)).all()
+            assert len(reviews) == 2
+            # Both should have None URL, not empty string
+            assert reviews[0].url is None
+            assert reviews[1].url is None
+
+    def test_empty_url_converted_to_none(self) -> None:
+        """HIGH-5: Empty string URLs should become None in the database."""
+        from litmatch.defs.utils.db_operations import upsert_book
+        from sqlmodel import Session, select
+        from backend.db.models import Review
+
+        engine = _create_engine_and_tables()
+        record = _make_transformed_record(reviews=[
+            {
+                "critic": "Test Critic",
+                "publication": "Test Pub",
+                "rating": 4,
+                "review": "A review.",
+                "url": "",
+            },
+        ])
+
+        with Session(engine) as session:
+            upsert_book(session, record)
+            session.commit()
+
+        with Session(engine) as session:
+            review = session.exec(select(Review)).first()
+            assert review is not None
+            assert review.url is None
+
+
+class TestModelsLazyImport:
+    """HIGH-2: _models() should use functools.lru_cache, not global mutable state."""
+
+    def test_models_uses_lru_cache(self) -> None:
+        """Verify _models does not use global mutable state."""
+        from litmatch.defs.utils import db_operations
+
+        # The _models function should be a cached function (lru_cache)
+        assert hasattr(db_operations._models, "cache_info"), (
+            "_models should use functools.lru_cache, not global mutable state"
+        )
+
+    def test_no_global_models_module_variable(self) -> None:
+        """Verify the global _models_module variable was removed."""
+        from litmatch.defs.utils import db_operations
+
+        assert not hasattr(db_operations, "_models_module"), (
+            "Global _models_module variable should be removed in favor of lru_cache"
+        )

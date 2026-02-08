@@ -1,109 +1,243 @@
-# Checkpoint: critical-security-fixes
+# Checkpoint: dagster-phase1-critical-path
 
-**Created:** 2026-02-08 11:09
-**Git SHA:** 87a9103
+**Created:** 2026-02-08 11:45
+**Git SHA:** dc37896
 **Branch:** feat/dagster
 
 ## Status
 
-✅ **READY FOR REVIEW** - All 4 CRITICAL security issues resolved
+⚠️ **MERGE WITH CAUTION** - Critical path complete, 5 HIGH priority issues require fixes
 
 ## Summary
 
-Fixed all 4 CRITICAL security vulnerabilities identified in Phase 2 security review:
-- C-1: Hardcoded database credentials removed
-- C-2: Cookie secure flag made configurable (defaults to true)
-- C-3: Password maximum length added (72 chars, bcrypt limit)
-- C-4: GET /ratings/ now requires authentication and scopes to current user
+Refactored monolithic Dagster pipeline (213-line assets.py) into 13 focused modules following modular architecture principles. Implemented Phase 1 critical path from dagster-spec.md:
+- Asset pipeline: raw_books → validated_books → cleaned_books → load_books
+- 3 ConfigurableResources: DatabaseResource, PathResource, ScrapydResource
+- Core utilities: transforms, validation, db_operations
+- 68 new tests with 100% coverage on utility modules
+
+Pipeline is functional and tested but has 5 HIGH priority issues that must be addressed before production deployment.
 
 ## Test Results
 
 | Suite | Status | Count | Change |
 |-------|--------|-------|--------|
-| Backend | ✅ PASS | 67 tests | +4 new |
-| Frontend | ✅ PASS | 50 tests | +2 new |
+| Dagster | ✅ PASS | 68 tests | +68 new |
+| Backend | ✅ PASS | 67 tests | unchanged |
+| **Total** | ✅ PASS | **135 tests** | +68 |
 | TypeScript | ✅ PASS | 0 errors | - |
-| Build | ✅ PASS | - | - |
+| Coverage | ✅ PASS | 100% on utils | - |
+
+**Verification:**
+- `dg dev` successfully launches with all assets/resources discovered
+- SQLite tests pass (in-memory database)
+- PostgreSQL integration tests deferred (need live DB)
 
 ## Files Changed
 
-### Backend (3 modified, 4 new)
-**Modified:**
-- `backend/app/main.py` - COOKIE_SECURE config, auth required for GET /ratings/
-- `backend/db/models.py` - Password max length validation
-- `backend/tests/conftest.py` - COOKIE_SECURE=false for tests
-- `backend/tests/test_endpoints.py` - COOKIE_SECURE=false for tests
+### New Modules (13 files)
 
-**New:**
-- `backend/app/config.py` - COOKIE_SECURE config, DATABASE_URL fail-fast
-- `backend/tests/test_models.py` - Added password max length tests
-- `backend/tests/test_endpoints.py` - Added GET /ratings/ auth tests
+**Assets (4 modules):**
+- `src/litmatch/defs/assets/extract.py` (46 lines) - raw_books JSONL parsing
+- `src/litmatch/defs/assets/validate.py` (62 lines) - Multi-asset validation/quarantine
+- `src/litmatch/defs/assets/transform.py` (33 lines) - Data cleaning transforms
+- `src/litmatch/defs/assets/load.py` (57 lines) - PostgreSQL upsert
 
-### Frontend (2 modified)
-**Modified:**
-- `frontend/src/utils/validation.ts` - Password max length validation
-- `frontend/src/utils/validation.test.ts` - Added password max length tests
+**Resources (3 modules):**
+- `src/litmatch/defs/resources/database.py` (24 lines) - SQLAlchemy engine wrapper
+- `src/litmatch/defs/resources/path.py` (17 lines) - Raw data directory config
+- `src/litmatch/defs/resources/scrapyd.py` (23 lines) - Scraper orchestration
 
-### Infrastructure (1 modified)
-**Modified:**
-- `compose.yaml` - Added COOKIE_SECURE and REFRESH_COOKIE_PATH env vars
+**Utils (3 modules):**
+- `src/litmatch/defs/utils/transforms.py` (138 lines) - Pure transform functions
+- `src/litmatch/defs/utils/validation.py` (72 lines) - Book/review validation
+- `src/litmatch/defs/utils/db_operations.py` (205 lines) - Database upsert logic
 
-## Security Improvements
+**Tests (68 new tests):**
+- `tests/dagster/test_transforms.py` - Date fixing, rating encoding, fiction classification
+- `tests/dagster/test_validation.py` - Validation edge cases
+- `tests/dagster/test_db_operations.py` - Database operations
+- `tests/dagster/test_assets.py` - Asset execution
 
-### C-1: Database Credentials ✅ FIXED
-**Before:** Hardcoded fallback `postgresql://bookuser:bookpassword@localhost:5432/bookdb`
-**After:** Fail-fast with `RuntimeError` if DATABASE_URL not set
-**Impact:** Prevents accidental production deployment with dev credentials
+### Modified Files
 
-### C-2: Cookie Secure Flag ✅ FIXED
-**Before:** Hardcoded `secure=False` (cookies sent over HTTP)
-**After:** Configurable via `COOKIE_SECURE` env var (defaults to `true`)
-**Impact:** Prevents refresh token theft via network sniffing
+- `src/litmatch/definitions.py` - Switched from auto-discovery to explicit Definitions
+- `pyproject.toml` - Added pytest-timeout dependency
+- `uv.lock` - Updated lockfile
 
-### C-3: Password Max Length ✅ FIXED
-**Before:** No max length (bcrypt silently truncates at 72 bytes)
-**After:** Validates max 72 characters on both frontend and backend
-**Impact:** Prevents bcrypt truncation attacks
+### Moved/Deprecated Files
 
-### C-4: Ratings Endpoint Auth ✅ FIXED
-**Before:** Unauthenticated, could query any user's ratings
-**After:** Requires authentication, scoped to current user only
-**Impact:** Prevents privacy violation and user enumeration
+- `src/litmatch/defs/assets.py` → `src/litmatch/defs/assets_legacy.py` (archived)
+
+## Architecture Improvements
+
+### Before (Monolithic)
+```
+src/litmatch/defs/
+├── assets.py (213 lines, everything mixed together)
+└── resources.py
+```
+
+### After (Modular)
+```
+src/litmatch/defs/
+├── assets/
+│   ├── extract.py      # JSONL → raw_books
+│   ├── validate.py     # raw_books → validated_books + validation_errors
+│   ├── transform.py    # validated_books → cleaned_books
+│   └── load.py         # cleaned_books → PostgreSQL
+├── resources/
+│   ├── database.py     # DatabaseResource
+│   ├── path.py         # PathResource
+│   └── scrapyd.py      # ScrapydResource
+└── utils/
+    ├── transforms.py   # Pure functions (100% tested)
+    ├── validation.py   # Error code returns (100% tested)
+    └── db_operations.py # Get-or-create patterns (100% tested)
+```
+
+### Design Patterns Applied
+
+1. **Multi-Asset Pattern**: `validate_raw_books` returns both validated data and quarantine errors
+2. **Pure Functions**: All transforms are stateless and return new objects (immutability)
+3. **Error Codes**: Validation returns error codes instead of exceptions
+4. **Lazy Imports**: `backend.db.models` imported at function scope to avoid module resolution issues
+5. **ConfigurableResource**: Resources extend `dg.ConfigurableResource` for proper Dagster integration
+
+## Critical Issues (5 HIGH priority)
+
+⚠️ **MUST FIX BEFORE PRODUCTION**
+
+### HIGH-1: Hardcoded Database Credentials
+**Location:** `src/litmatch/definitions.py:13-16`
+```python
+_DATABASE_URL = os.environ.get(
+    "DATABASE_URL",
+    "postgresql://bookuser:bookpassword@localhost:5432/bookdb",  # REMOVE THIS
+)
+```
+**Impact:** Security vulnerability if deployed without DATABASE_URL env var
+**Fix:** Remove fallback, fail-fast if env var missing (same pattern as backend/app/config.py)
+
+### HIGH-2: Global Mutable State
+**Location:** `src/litmatch/defs/utils/db_operations.py:13-14`
+```python
+_author_cache: dict[str, int] = {}
+_publisher_cache: dict[str, int] = {}
+```
+**Impact:** Violates immutability principle, can cause bugs in concurrent execution
+**Fix:** Use `functools.lru_cache` on pure functions instead
+
+### HIGH-3: is_fiction Field Silently Ignored
+**Location:** `src/litmatch/defs/utils/db_operations.py:110-113`
+```python
+stmt = (
+    insert(Book)
+    .values(**book_data)
+    .on_conflict_do_update(index_elements=["url"], set_=book_data)
+)
+```
+**Impact:** `is_fiction` field not updated on existing books, data inconsistency
+**Fix:** Exclude `is_fiction` from upsert or explicitly document why it's immutable after creation
+
+### HIGH-4: Transaction Bug (Data Loss Risk)
+**Location:** `src/litmatch/defs/utils/db_operations.py:76-79`
+```python
+try:
+    success = upsert_book(session, cleaned_record)
+    # ...
+except Exception as e:
+    session.rollback()
+    logger.warning(f"Failed to load book: {e}")
+    continue  # BUG: Continues after rollback, commits at end
+```
+**Impact:** After rollback, loop continues and commits partially failed transaction
+**Fix:** Use savepoints for per-record transactions or track failures and abort entire batch
+
+### HIGH-5: Empty Review URLs vs PostgreSQL Constraint
+**Location:** `src/litmatch/defs/utils/validation.py:60-61`
+```python
+# Relaxed: 68 reviews in production data have empty URLs
+if record.get("review_url") == "":
+    errors.append("REVIEW_EMPTY_URL")
+```
+**Impact:** PostgreSQL treats empty strings as unique, but unique constraint will fail on multiple empty strings
+**Fix:** Use `None` instead of `""` for missing URLs
+
+## Non-Critical Issues
+
+**8 MEDIUM Priority Issues:**
+- Missing validation error summary in validation_errors asset metadata
+- No asset description docstrings (impacts Dagster UI)
+- SQLAlchemy autoflush warnings (25 warnings during tests)
+- No transaction retry logic for transient failures
+- Hardcoded page_size=100 in load_books
+- No JSONL malformed line recovery
+- Fiction classification always returns False (simple heuristic needed)
+- No asset lineage visualization tests
+
+**6 LOW Priority Issues:**
+- Missing module-level docstrings
+- No asset group organization
+- Inconsistent error logging format
+- Missing type hints in some helper functions
+- No performance benchmarks
+- Test coverage not measured for assets/ modules
+
+## Deferred Work
+
+**Steps K-M from original plan (not critical path):**
+- Scraper job definition (orchestrate Scrapyd via ScrapydResource)
+- Schedule definitions (weekly scraper runs)
+- Sensors for book count monitoring
 
 ## Deployment Checklist
 
 Before deploying to production:
+- [ ] Fix HIGH-1: Remove hardcoded DB credentials
+- [ ] Fix HIGH-2: Replace global mutable state with lru_cache
+- [ ] Fix HIGH-3: Document is_fiction behavior or fix upsert
+- [ ] Fix HIGH-4: Fix transaction bug (use savepoints)
+- [ ] Fix HIGH-5: Use None instead of "" for empty review URLs
+- [ ] Run integration tests against real PostgreSQL
 - [ ] Set `DATABASE_URL` environment variable
-- [ ] Set `SECRET_KEY` environment variable (already required)
-- [ ] Set `COOKIE_SECURE=true` for HTTPS environments
-- [ ] Set `CORS_ORIGINS` to actual frontend domain
-- [ ] Set `REFRESH_COOKIE_PATH` appropriately
-
-## Remaining Work
-
-**HIGH Priority (5 issues):**
-- H-1: Add security headers (X-Frame-Options, CSP, HSTS, etc.)
-- H-2: Add CSRF protection for cookie-based endpoints
-- H-3: Implement expired refresh token cleanup
-- H-4: Fix rate limiter for proxy environments
-- H-5: Add audit logging for security events
-
-**MEDIUM Priority (5 issues):**
-- M-1: Strengthen password policy (special chars, common password check)
-- M-2: Remove user_id from public responses (use opaque IDs)
-- M-3: Fix naive datetime usage (use UTC everywhere)
-- M-4: Fix registration timing side-channel (username enumeration)
-- M-5: Document cookie path mismatch between dev/prod
-
-**LOW Priority (4 issues):**
-- L-1: Remove username from JWT payload
-- L-2: Fix cookie deletion attribute matching
-- L-3: Add JWT sub claim type validation
-- L-4: Validate cover URLs before rendering
+- [ ] Verify `dg dev` works in production environment
+- [ ] Delete or clearly mark assets_legacy.py as deprecated
 
 ## Next Steps
 
-1. Address HIGH priority issues (estimated 4-6 hours)
-2. Create pull request for Phase 2 + security fixes
-3. Address MEDIUM/LOW issues in follow-up PRs
-4. Manual E2E testing with full stack running
+1. **Immediate**: Fix 5 HIGH priority issues (estimated 2-3 hours)
+2. **Short-term**: Address 8 MEDIUM issues (estimated 4-6 hours)
+3. **Medium-term**: Implement deferred Steps K-M (scraper job, scheduling, sensors)
+4. **Long-term**: Address 6 LOW issues and run PostgreSQL integration tests
+
+## Comparison to Previous Checkpoint
+
+**Previous:** critical-security-fixes (SHA: 87a9103)
+- Fixed 4 CRITICAL security issues in Phase 2 auth implementation
+- 67 backend + 50 frontend tests passing
+
+**Current:** dagster-phase1-critical-path (SHA: dc37896)
+- Refactored Dagster Phase 1 into modular architecture
+- 68 new Dagster + 67 backend tests passing (135 total)
+- Ready for review but requires HIGH issue fixes before production
+
+## Overall Assessment
+
+**Score: 7/10**
+
+**Strengths:**
+- ✅ Excellent separation of concerns (assets/resources/utils)
+- ✅ 100% test coverage on core utility modules
+- ✅ Immutability principle followed in transforms
+- ✅ Error code validation pattern (no exception control flow)
+- ✅ Multi-asset pattern for validation/quarantine
+- ✅ Functional and verified with `dg dev`
+
+**Weaknesses:**
+- ⚠️ 5 HIGH issues blocking production deployment
+- ⚠️ Global mutable state in db_operations.py
+- ⚠️ Transaction bug causing potential data loss
+- ⚠️ Hardcoded credentials security issue
+
+**Recommendation:** ⚠️ **MERGE WITH CAUTION** - The refactoring is high quality and represents a significant improvement over the legacy monolithic code. However, **5 HIGH priority issues must be addressed before production use**.

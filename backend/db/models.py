@@ -39,6 +39,7 @@ class Book(SQLModel, table=True):
     description: str
     url: str = Field(unique=True)
     cover: str | None
+    is_fiction: bool | None = Field(default=None)
     last_scraped: datetime | None = Field(default=datetime.now())
 
     author: Author | None = Relationship(back_populates='books')
@@ -72,7 +73,7 @@ class Review(SQLModel, table=True):
     publication_id: int | None = Field(default=None, foreign_key='publication.id')
     rating: int
     review: str
-    url: str = Field(unique=True)
+    url: str | None = Field(default=None, unique=True)
 
     book: Book = Relationship(back_populates='reviews')
     critic: Critic | None = Relationship(back_populates='reviews')
