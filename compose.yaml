@@ -1,0 +1,43 @@
+services:
+  db:
+    image: pgvector/pgvector:pg18
+    restart: always
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+  backend:
+    build:
+      context: ./backend
+    depends_on:
+      - db
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      SECRET_KEY: ${SECRET_KEY}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      REFRESH_COOKIE_PATH: ${REFRESH_COOKIE_PATH:-/auth/refresh}
+    ports:
+      - "8000:8000"
+    #command: >
+      # fastapi run backend/app/main.py -p 8000
+      # uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+  scrapyd:
+    build:
+      context: ./scraper
+    environment:
+      PROXY_TOKEN: ${PROXY_TOKEN}
+    ports:
+      - "6800:6800"
+    volumes:
+      - shared_scraper_output:/scraper/output
+
+volumes:
+  postgres_data:
+  shared_scraper_output:

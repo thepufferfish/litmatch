@@ -1,121 +1,354 @@
-import os
-
 from datetime import datetime
 
-from fastapi import FastAPI, Depends, HTTPException, Query
-from sqlmodel import Session, create_engine, select
-from passlib.context import CryptContext
+from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response
+from fastapi.middleware.cors import CORSMiddleware
+import bcrypt
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from sqlmodel import Session, create_engine, func, or_, select, case
 
-# from backend import database
-from backend.db.models import User, UserCreate, UserPublic, Book, Review, Genre, UserRating
-
-DATABASE_URL = os.environ.get(
-    "DATABASE_URL", "postgresql://bookuser:bookpassword@localhost:5432/bookdb"
+from backend.app.auth import (
+    create_access_token,
+    create_refresh_token,
+    decode_bearer_token,
+    revoke_refresh_token,
+    store_refresh_token,
+    validate_refresh_token,
+)
+from backend.app.config import (
+    COOKIE_SECURE,
+    CORS_ORIGINS,
+    DATABASE_URL,
+    REFRESH_COOKIE_PATH,
+    REFRESH_TOKEN_EXPIRE_DAYS,
+)
+from backend.app.rate_limit import limiter
+from backend.db.models import (
+    Author,
+    AuthResponse,
+    Book,
+    Genre,
+    PaginatedResponse,
+    RatingCreate,
+    Review,
+    User,
+    UserCreate,
+    UserPublic,
+    UserRating,
 )
 
 engine = create_engine(DATABASE_URL)
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+def _hash_password(password: str) -> str:
+    """Hash a password using bcrypt."""
+    return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+
+
+def _verify_password(password: str, password_hash: str) -> bool:
+    """Verify a password against a bcrypt hash."""
+    return bcrypt.checkpw(password.encode(), password_hash.encode())
+
 
 def get_session():
     with Session(engine) as session:
         yield session
 
+
+def get_current_user(
+    payload: dict = Depends(decode_bearer_token),
+    session: Session = Depends(get_session),
+) -> User:
+    """Extract the current user from a Bearer token."""
+    user_id = int(payload["sub"])
+    user = session.get(User, user_id)
+    if user is None:
+        raise HTTPException(status_code=401, detail="User not found")
+    return user
+
+
 app = FastAPI()
 
-@app.post('/auth/register', response_model=UserPublic)
-def create_user(*, session=Depends(get_session), user_in: UserCreate):
-    user = session.exec(select(User).where(User.username == user_in.username)).first()
-    if user:
-        raise HTTPException(status_code=400, detail="Username already exists")
-    hashed_pw = pwd_context.hash(user_in.password)
-    user = User.model_validate(
-        user_in, update={"password_hash": hashed_pw}
+# Rate limiter setup
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+# CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=CORS_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
+)
+
+
+def _set_refresh_cookie(response: Response, raw_token: str) -> None:
+    """Set the httpOnly refresh token cookie on a response."""
+    response.set_cookie(
+        key="refresh_token",
+        value=raw_token,
+        httponly=True,
+        secure=COOKIE_SECURE,
+        samesite="strict",
+        path=REFRESH_COOKIE_PATH,
+        max_age=REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60,
     )
+
+
+def _clear_refresh_cookie(response: Response) -> None:
+    """Clear the refresh token cookie."""
+    response.delete_cookie(
+        key="refresh_token",
+        path=REFRESH_COOKIE_PATH,
+        httponly=True,
+        secure=COOKIE_SECURE,
+        samesite="strict",
+    )
+
+
+# ---------------------------------------------------------------------------
+# Auth endpoints
+# ---------------------------------------------------------------------------
+
+@app.post("/auth/register", response_model=AuthResponse)
+@limiter.limit("3/minute")
+def register(
+    request: Request,
+    response: Response,
+    *,
+    session: Session = Depends(get_session),
+    user_in: UserCreate,
+):
+    existing = session.exec(
+        select(User).where(User.username == user_in.username)
+    ).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="Registration failed")
+
+    hashed_pw = _hash_password(user_in.password)
+    user = User.model_validate(user_in, update={"password_hash": hashed_pw})
     session.add(user)
     session.commit()
     session.refresh(user)
-    return {'id': user.id, 'username': user.username}
 
-@app.post("/auth/login", response_model=UserPublic)
-def login(*, session: Session = Depends(get_session), user_in: UserCreate):
-    user = session.exec(select(User).where(User.username == user_in.username)).first()
-    if not user or not pwd_context.verify(user_in.password, user.password_hash):
+    access_token = create_access_token(user.id, user.username)
+    raw_refresh = create_refresh_token()
+    store_refresh_token(session, user.id, raw_refresh)
+    _set_refresh_cookie(response, raw_refresh)
+
+    return AuthResponse(
+        access_token=access_token,
+        token_type="bearer",
+        user=UserPublic(id=user.id, username=user.username),
+    )
+
+
+@app.post("/auth/login", response_model=AuthResponse)
+@limiter.limit("5/minute")
+def login(
+    request: Request,
+    response: Response,
+    *,
+    session: Session = Depends(get_session),
+    user_in: UserCreate,
+):
+    user = session.exec(
+        select(User).where(User.username == user_in.username)
+    ).first()
+    if not user or not _verify_password(user_in.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Invalid credentials")
-    return {'id': user.id, 'username': user.username}
 
-@app.get("/books/", response_model=list[Book])
+    access_token = create_access_token(user.id, user.username)
+    raw_refresh = create_refresh_token()
+    store_refresh_token(session, user.id, raw_refresh)
+    _set_refresh_cookie(response, raw_refresh)
+
+    return AuthResponse(
+        access_token=access_token,
+        token_type="bearer",
+        user=UserPublic(id=user.id, username=user.username),
+    )
+
+
+@app.post("/auth/refresh", response_model=AuthResponse)
+def refresh(request: Request, response: Response, *, session: Session = Depends(get_session)):
+    raw_token = request.cookies.get("refresh_token")
+    if not raw_token:
+        raise HTTPException(status_code=401, detail="No refresh token")
+
+    token_record = validate_refresh_token(session, raw_token)
+    if not token_record:
+        _clear_refresh_cookie(response)
+        raise HTTPException(status_code=401, detail="Invalid or expired refresh token")
+
+    # Rotate: revoke old, issue new
+    user = session.get(User, token_record.user_id)
+    if not user:
+        raise HTTPException(status_code=401, detail="User not found")
+
+    revoke_refresh_token(session, raw_token)
+
+    access_token = create_access_token(user.id, user.username)
+    new_raw_refresh = create_refresh_token()
+    store_refresh_token(session, user.id, new_raw_refresh)
+    _set_refresh_cookie(response, new_raw_refresh)
+
+    return AuthResponse(
+        access_token=access_token,
+        token_type="bearer",
+        user=UserPublic(id=user.id, username=user.username),
+    )
+
+
+@app.post("/auth/logout")
+def logout(request: Request, response: Response, *, session: Session = Depends(get_session)):
+    raw_token = request.cookies.get("refresh_token")
+    if raw_token:
+        revoke_refresh_token(session, raw_token)
+    _clear_refresh_cookie(response)
+    return {"detail": "Logged out"}
+
+
+# ---------------------------------------------------------------------------
+# Book endpoints
+# ---------------------------------------------------------------------------
+
+@app.get("/books/", response_model=PaginatedResponse[Book])
 def read_books(
     *,
-    session=Depends(get_session),
-    offset: int = 0,
-    limit: int = Query(default=100, le=100),
+    session: Session = Depends(get_session),
+    page: int = Query(default=1, ge=1),
+    limit: int = Query(default=24, ge=1, le=100),
     genre: int | None = None,
-    user_id: int | None = None
+    user_id: int | None = None,
 ):
+    stmt = select(Book)
+    count_stmt = select(func.count(Book.id))
     if genre:
-        stmt = select(Book).join(Book.genres).where(Genre.id == genre)
+        stmt = stmt.join(Book.genres).where(Genre.id == genre)
+        count_stmt = count_stmt.join(Book.genres).where(Genre.id == genre)
     if user_id:
         stmt = stmt.join(Book.user_ratings).where(UserRating.user_id == user_id)
-    else:
-        stmt = select(Book)
+        count_stmt = count_stmt.join(Book.user_ratings).where(UserRating.user_id == user_id)
+    total = session.exec(count_stmt).one()
+    offset = (page - 1) * limit
     books = session.exec(stmt.offset(offset).limit(limit)).all()
-    return books
+    return PaginatedResponse(items=books, total=total, page=page, limit=limit)
+
+
+def escape_like(value: str) -> str:
+    """Escape SQL LIKE/ILIKE wildcards to prevent pattern injection."""
+    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
+@app.get("/books/search", response_model=PaginatedResponse[Book])
+def search_books(
+    *,
+    session: Session = Depends(get_session),
+    q: str = Query(default="", max_length=200),
+    page: int = Query(default=1, ge=1),
+    limit: int = Query(default=24, ge=1, le=100),
+):
+    if len(q.strip()) < 2:
+        raise HTTPException(
+            status_code=400,
+            detail="Search query must be at least 2 characters",
+        )
+    pattern = f"%{escape_like(q)}%"
+    filter_clause = or_(Book.title.ilike(pattern), Author.name.ilike(pattern))
+    rank = case(
+        (func.lower(Book.title) == q.lower(), 0),
+        (Book.title.ilike(pattern), 1),
+        (Author.name.ilike(pattern), 2),
+        else_=3,
+    )
+    stmt = (
+        select(Book)
+        .outerjoin(Author, Book.author_id == Author.id)
+        .where(filter_clause)
+        .order_by(rank, Book.title)
+    )
+    count_stmt = (
+        select(func.count(Book.id))
+        .outerjoin(Author, Book.author_id == Author.id)
+        .where(filter_clause)
+    )
+    total = session.exec(count_stmt).one()
+    offset = (page - 1) * limit
+    books = session.exec(stmt.offset(offset).limit(limit)).all()
+    return PaginatedResponse(items=books, total=total, page=page, limit=limit)
+
 
 @app.get("/books/{book_id}", response_model=Book)
-def read_book(*, session=Depends(get_session), book_id: int):
+def read_book(*, session: Session = Depends(get_session), book_id: int):
     book = session.get(Book, book_id)
     if not book:
         raise HTTPException(status_code=404, detail="Book not found")
     return book
 
+
+# ---------------------------------------------------------------------------
+# Reviews & Genres
+# ---------------------------------------------------------------------------
+
 @app.get("/reviews/{book_id}", response_model=list[Review])
-def read_reviews(*, session=Depends(get_session), book_id: int):
+def read_reviews(*, session: Session = Depends(get_session), book_id: int):
     reviews = session.exec(select(Review).where(Review.book_id == book_id)).all()
-    if not reviews:
-        raise HTTPException(status_code=404, detail="Reviews for book not found")
     return reviews
 
+
 @app.get("/genres/", response_model=list[Genre])
-def read_genres(*, session=Depends(get_session)):
+def read_genres(*, session: Session = Depends(get_session)):
     genres = session.exec(select(Genre)).all()
     return genres
 
-@app.get('/ratings/', response_model=list[UserRating])
-def read_ratings(*, session=Depends(get_session), user_id: int | None = None, book_id: int | None = None):
-    stmt = select(UserRating)
-    if user_id:
-        stmt = stmt.where(UserRating.user_id == user_id)
+
+# ---------------------------------------------------------------------------
+# Ratings
+# ---------------------------------------------------------------------------
+
+@app.get("/ratings/", response_model=list[UserRating])
+def read_ratings(
+    *,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+    book_id: int | None = None,
+):
+    """Return the current user's ratings, optionally filtered by book."""
+    stmt = select(UserRating).where(UserRating.user_id == current_user.id)
     if book_id:
         stmt = stmt.where(UserRating.book_id == book_id)
     ratings = session.exec(stmt).all()
-    if not ratings:
-        raise HTTPException(status_code=404, detail="Ratings for book not found")
     return ratings
 
-@app.post('/ratings/', response_model=UserRating)
-def add_rating(*, session=Depends(get_session), rating_in: UserRating):
-    stmt = select(UserRating).where(UserRating.user_id == rating_in.user_id).where(UserRating.book_id == rating_in.book_id)
+
+@app.post("/ratings/", response_model=UserRating)
+@limiter.limit("30/minute")
+def add_rating(
+    request: Request,
+    *,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+    rating_in: RatingCreate,
+):
+    stmt = (
+        select(UserRating)
+        .where(UserRating.user_id == current_user.id)
+        .where(UserRating.book_id == rating_in.book_id)
+    )
     rating = session.exec(stmt).first()
     if rating:
         rating.rating = rating_in.rating
         rating.updated_at = datetime.now()
     else:
-        # TODO: figure out why this doesn't work
-        # rating = UserRating.model_validate(
-        #     rating_in,
-        #     update={
-        #         'updated_at': datetime.now(),
-        #         'created_at': datetime.now()
-        #     }
-        # )
         rating = UserRating(
-            user_id=rating_in.user_id,
+            user_id=current_user.id,
             book_id=rating_in.book_id,
             rating=rating_in.rating,
             created_at=datetime.now(),
-            updated_at=datetime.now()
+            updated_at=datetime.now(),
         )
     session.add(rating)
     session.commit()
+    session.refresh(rating)
     return rating

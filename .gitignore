@@ -170,3 +170,10 @@ cython_debug/
 
 # Windsurf files
 .windsurf/
+
+# Dagster temp files
+.tmp_dagster_home_*
+
+# Node.js
+node_modules/
+frontend/dist/
