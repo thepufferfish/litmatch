@@ -5,9 +5,8 @@ import pandas as pd
 import dagster as dg
 
 from typing import List, Dict
-from tldextract import extract
 from datetime import date, datetime
-from sqlmodel import Session, create_engine, and_, or_, select
+from sqlmodel import Session, create_engine, select
 
 from backend.db.models import Book, Genre, Author, Publisher, Review, Critic, Publication
 
@@ -31,6 +30,44 @@ def extract(context: dg.AssetExecutionContext) -> List[Dict]:
                 data.append(json.loads(line))
             except json.JSONDecodeError:
                 context.log.error(f'Error parsing line {line_number}: {line.strip()}')
+    return data
+
+@dg.asset
+def raw_data(context: dg.AssetExecutionContext) -> pd.DataFrame:
+
+    fn = os.path.join(RAW_DATA_DIR, 'books.jsonl')
+    if not os.path.exists(fn):
+            context.log.error(f'Raw data path does not exist: {fn}')
+
+    data = pd.read_json(fn, lines=True)
+    
+    return data
+
+def fix_publish_dates(data: pd.DataFrame) -> pd.DataFrame:
+    """ Some publish dates are bad, so this fixes the ones I've seen in EDA """
+    data.loc[:,'publish_date'] = data['publish_date'].str.replace('0209', '2019')
+    data.loc[:,'publish_date'] = data['publish_date'].str.replace('0000', '2019')
+    data.loc[:,'publish_date'] = data['publish_date'].str.replace('-0001', '2019')
+    data.loc[:,'publish_date'] = pd.to_datetime(data['publish_date'], format="%B %d, %Y")
+    return data
+
+def check_if_fiction(x: List) -> bool:
+    if 'Fiction' in x:
+        return True
+    elif 'Non-Fiction' in x:
+        return False
+    else:
+        return None
+
+def add_fiction_flag(data: pd.DataFrame) -> pd.DataFrame:
+    data.loc[:,'is_fiction'] = data['genres'].apply(check_if_fiction)
+    return data
+
+@dg.asset
+def cleaned_data(context: dg.AssetExecutionContext, raw_data: pd.DataFrame) -> pd.DataFrame:
+    data = raw_data
+    data = fix_publish_dates(data)
+    data = add_fiction_flag(data)
     return data
 
 @dg.asset
@@ -69,13 +106,6 @@ def load_to_db(context: dg.AssetExecutionContext, extract) -> None:
                 session.add(book)
                 session.commit()
 
-def fix_publish_date(date_string: str) -> date:
-    date_string = date_string.replace('0209', '2019')
-    date_string = date_string.replace('0000', '2019')
-    date_string = date_string.replace('-0001', '2019')
-    publish_date = datetime.strptime(date_string, '%B %d, %Y')
-    return publish_date
-    
 def encode_rating(rating: str) -> int:
     if rating == 'Rave':
         return 4
@@ -87,6 +117,18 @@ def encode_rating(rating: str) -> int:
         return 1
     else:
         raise ValueError(f'Error encoding review rating: unknown rating {rating}')
+
+def fix_publish_date(date_str: str) -> date | None:
+    """Fix and parse a single publish date string."""
+    if not date_str:
+        return None
+    date_str = date_str.replace('0209', '2019')
+    date_str = date_str.replace('0000', '2019')
+    date_str = date_str.replace('-0001', '2019')
+    try:
+        return datetime.strptime(date_str, "%B %d, %Y").date()
+    except ValueError:
+        return None
 
 def prepare_book(session: Session, record: dict) -> Book:
     
@@ -149,10 +191,10 @@ def prepare_review(session: Session, record: dict) -> Review:
             else:
                 critic_name = record['publication']
 
-        statement = select(Critic).where(Critic.name == record['critic'])
+        statement = select(Critic).where(Critic.name == critic_name)
         critic = session.exec(statement).first()
         if not critic:
-            critic = Critic(name=record['critic'])
+            critic = Critic(name=critic_name)
 
         statement = select(Publication).where(Publication.name == record['publication'])
         publication = session.exec(statement).first()

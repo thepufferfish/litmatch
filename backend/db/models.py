@@ -1,7 +1,16 @@
+from typing import Generic, TypeVar
+
 from sqlmodel import Field, Relationship, SQLModel
-from pydantic import EmailStr
 from datetime import date, datetime
 from pgvector.sqlalchemy import Vector
+
+T = TypeVar("T")
+
+class PaginatedResponse(SQLModel, Generic[T]):
+    items: list[T]
+    total: int
+    page: int
+    limit: int
 
 class BookGenreLink(SQLModel, table=True):
     book_id: int | None = Field(foreign_key='book.id', primary_key=True)
