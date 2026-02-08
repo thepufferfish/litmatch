@@ -3,5 +3,7 @@ fastapi[standard]
 sqlmodel>=0.0.24
 psycopg2-binary>=2.9.10
 sqlalchemy<2.1.0,>=2.0.14
-passlib[bcrypt]
+bcrypt>=4.0.0
 pgvector>=0.4.1
+python-jose[cryptography]>=3.3.0
+slowapi>=0.1.9

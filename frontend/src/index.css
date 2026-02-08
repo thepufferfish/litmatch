@@ -1,0 +1,79 @@
+@import "tailwindcss";
+
+@theme {
+  /* Warm bookstore palette */
+  --color-cream: #fdf9f0;
+  --color-cream-dark: #f5edd6;
+  --color-ink: #2c1810;
+  --color-ink-light: #4a3728;
+  --color-leather: #8b6914;
+  --color-leather-light: #b8941e;
+  --color-leather-muted: #c4a94d;
+  --color-parchment: #f0e8d5;
+  --color-parchment-dark: #ddd0b3;
+  --color-muted: #8a7e6b;
+  --color-muted-light: #b3a890;
+
+  /* Critic rating badge colors */
+  --color-rave: #166534;
+  --color-rave-bg: #dcfce7;
+  --color-positive: #1e40af;
+  --color-positive-bg: #dbeafe;
+  --color-mixed: #92400e;
+  --color-mixed-bg: #fef3c7;
+  --color-pan: #991b1b;
+  --color-pan-bg: #fee2e2;
+
+  /* Typography */
+  --font-serif: "Playfair Display", Georgia, "Times New Roman", serif;
+  --font-sans: "Inter", system-ui, -apple-system, sans-serif;
+
+  /* Spacing & sizing */
+  --container-max: 1280px;
+}
+
+/* Base styles */
+body {
+  font-family: var(--font-sans);
+  background-color: var(--color-cream);
+  color: var(--color-ink);
+}
+
+/* Shimmer animation for skeleton loading */
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.skeleton-shimmer {
+  background: linear-gradient(
+    90deg,
+    var(--color-parchment) 25%,
+    var(--color-cream-dark) 50%,
+    var(--color-parchment) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--color-cream);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-parchment-dark);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-muted-light);
+}

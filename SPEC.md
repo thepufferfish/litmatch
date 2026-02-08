@@ -38,7 +38,7 @@ Personalized recommendations (integrate existing SVD recommender), user profile 
 
 ### Book Browse Page (`/` and `/genre/:slug`)
 
-- **Book cards** display: cover image, title, author name, genre tags (max 3), average critic rating.
+- **Book cards** display: cover image, title, author name, genre tags (max 3 shown alphabetically; if more than 3, show a `+N more` badge), average critic rating.
 - **Traditional pagination** — page numbers with prev/next. 24 books per page (4x6 grid on desktop).
 - **Genre sidebar** — list of all genres fetched from `GET /genres/`. Clicking a genre navigates to `/genre/:slug`. Active genre is highlighted.
 - **Search bar** — top of page, queries backend on submit/enter. Searches by title and author.
@@ -46,11 +46,50 @@ Personalized recommendations (integrate existing SVD recommender), user profile 
 - **Empty state** — friendly message when no books match filters/search.
 - On genre pages, the same browse layout is used but pre-filtered to that genre. The genre sidebar still shows all genres with the current one highlighted.
 
+### Search Behavior
+
+- **Endpoint:** `GET /books/search?q={query}&page={n}&limit={n}`
+- **Empty query** (`q=` or `q` omitted): return 400 with `{ "detail": "Search query must not be empty" }`. Frontend disables submit when input is blank.
+- **Minimum query length:** 2 characters. Shorter queries return 400.
+- **Search fields:** Title and author name. Case-insensitive partial matching (SQL `ILIKE '%query%'`). Future phases may replace with pgvector semantic search.
+- **Result ranking:** Exact title matches first, then title-contains, then author-contains. Within each tier, alphabetical by title.
+- **No results:** Return `{ items: [], total: 0, page: 1, limit: 24 }`. Frontend shows "No books found for '{query}'" with a "Clear search" button.
+- **Invalid page/limit:** Non-integer or negative values return 422. `limit` clamped to 1-100.
+
+### Pagination Behavior
+
+- Page numbering starts at 1. Default `page=1`, `limit=24`, max `limit=100`.
+- **Page exceeds total:** Backend returns `{ items: [], total: N, page: requested_page, limit: 24 }`. Frontend detects `items.length === 0 && total > 0` and redirects to page 1.
+- **Page 0 or negative:** 422 validation error.
+- **Fewer results than limit:** Normal behavior for the last page.
+
+### Null Field Fallback Behavior
+
+Book data may have null fields. Frontend handles each case:
+
+| Field | Fallback |
+|-------|----------|
+| `cover` | Placeholder SVG (muted book icon on warm-toned background) |
+| `author` | "Unknown Author" in italics |
+| `publisher` | Omit the publisher line entirely |
+| `publish_date` | Omit the date line entirely |
+| `description` | "No description available." in muted text |
+| `genres` | Show nothing in the genre tag area |
+
+### Empty States
+
+Three distinct empty states with different messages:
+
+1. **No books at all** (database empty, no filters active): "No books available yet. Check back soon!"
+2. **No search results**: "No books found for '{query}'." with a "Clear search" button.
+3. **No books in genre**: "No books in {genre} yet." with a "Browse all books" link.
+
 ### Book Detail Page (`/books/:id`)
 
 - Cover image (large), title (serif font), author, publisher, publish date, description.
 - Genre tags as clickable links (navigate to `/genre/:slug`).
-- **Critic reviews section** — list of reviews showing: critic name, publication, rating, review excerpt. Fetched from `GET /reviews/{book_id}`.
+- **Critic reviews section** — list of reviews showing: critic name (or "Anonymous"), publication name (or omit), rating badge (Rave/Positive/Mixed/Pan with color coding), review excerpt. Fetched from `GET /reviews/{book_id}`. Show first 5 reviews; if more exist, display a "Show all N reviews" button to expand.
+- The `url` field on Book is the source URL from bookmarks.reviews (not displayed to the user).
 - Back button / breadcrumb to return to browse.
 
 ### State Management (Phase 1)
@@ -98,6 +137,11 @@ Personalized recommendations (integrate existing SVD recommender), user profile 
 - Optimistic update — show the new rating immediately, roll back on error with a toast.
 - Calls `POST /ratings/` to create/update rating.
 
+### Rating Scale
+
+- **Critic reviews:** Integer 1-4 mapped from qualitative ratings (1=Pan, 2=Mixed, 3=Positive, 4=Rave). Displayed as colored badges (red/amber/blue/green), **not** stars.
+- **User ratings:** Integer 1-5. Whole stars only — no half-stars, no floats. Backend validates `1 <= rating <= 5` and rejects out-of-range values with 422.
+
 ### Backend Changes Required (Phase 2)
 
 #### JWT Auth Endpoints
@@ -112,9 +156,28 @@ Replace the current basic auth with JWT-based auth:
 | `POST` | `/auth/logout` | Clear refresh cookie |
 
 - Access tokens: short-lived (15 min), contain `user_id` and `username` in payload.
-- Refresh tokens: longer-lived (7 days), stored as httpOnly, Secure, SameSite=Lax cookie.
+- Refresh tokens: longer-lived (7 days), stored as httpOnly, Secure, SameSite=Strict cookie. Path set to `/auth/refresh` to limit cookie scope.
 - Use `python-jose` for JWT encoding/decoding.
 - Add a `Depends(get_current_user)` dependency for protected endpoints (`POST /ratings/`).
+
+#### Registration & Login Error Messages
+
+To prevent user enumeration:
+- `POST /auth/register` with an existing username: return 400 with `{ "detail": "Registration failed" }` (NOT "Username already exists").
+- `POST /auth/login` with wrong credentials: return 401 with `{ "detail": "Invalid credentials" }` (generic, no hint about which field is wrong).
+
+#### Input Validation
+
+- **Username:** 3-30 characters, alphanumeric plus underscores only (`^[a-zA-Z0-9_]{3,30}$`). Reject with 422 if invalid.
+- **Password:** Minimum 8 characters. Must contain at least one letter and one digit. Reject with 422 if invalid.
+
+#### Rate Limiting
+
+Apply rate limiting (e.g., `slowapi`):
+- `POST /auth/login`: 5 attempts per minute per IP.
+- `POST /auth/register`: 3 attempts per minute per IP.
+- `POST /ratings/`: 30 per minute per user.
+- Return 429 with `{ "detail": "Rate limit exceeded. Try again in {N} seconds." }` and `Retry-After` header.
 
 #### CORS Middleware
 
@@ -125,14 +188,14 @@ from fastapi.middleware.cors import CORSMiddleware
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],  # Vite dev server
-    allow_credentials=True,  # Required for cookies
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=["http://localhost:5173"],  # Vite dev; configurable via CORS_ORIGINS env var
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 ```
 
-Production origins should be configurable via environment variable.
+Production `allow_origins` must be set via `CORS_ORIGINS` environment variable (comma-separated). Never use `["*"]` with `allow_credentials=True`.
 
 ---
 
@@ -156,19 +219,58 @@ Phase 3 is intentionally underspecified. Exact features and UX will be defined b
 
 ---
 
-## New API Endpoints Needed
+## Existing API Endpoints
 
-These endpoints don't exist yet and are required for the React frontend:
+These endpoints already exist in the FastAPI backend (`backend/app/main.py`):
 
-| Phase | Method | Endpoint | Purpose |
-|-------|--------|----------|---------|
-| 1 | `GET` | `/books/search?q={query}&page={n}&limit={n}` | Search books by title/author. Returns paginated results with total count. |
-| 1 | `GET` | `/books/?page={n}&limit={n}&genre={id}` | **Modify existing** — add `total_count` to response for pagination (return `{ books: [...], total: N }`). |
-| 2 | `POST` | `/auth/login` | **Modify existing** — return JWT access token + set refresh cookie. |
-| 2 | `POST` | `/auth/register` | **Modify existing** — return JWT access token + set refresh cookie. |
-| 2 | `POST` | `/auth/refresh` | Validate refresh cookie, issue new access token. |
-| 2 | `POST` | `/auth/logout` | Clear refresh cookie. |
-| 3 | `GET` | `/recommendations/{user_id}` | Get personalized book recommendations. |
+| Method | Endpoint | Response | Notes |
+|--------|----------|----------|-------|
+| `GET` | `/books/?offset={n}&limit={n}&genre={id}` | `Book[]` | Returns books; limit max 100. Uses `offset` not `page`. No total count. |
+| `GET` | `/books/{book_id}` | `Book` | Single book with author, publisher, genres, reviews. 404 if not found. |
+| `GET` | `/reviews/{book_id}` | `Review[]` | All reviews for a book. Currently returns 404 if none exist (should return `[]`). |
+| `GET` | `/genres/` | `Genre[]` | All genres. |
+| `GET` | `/ratings/?user_id={n}&book_id={n}` | `UserRating[]` | Filter by user and/or book. |
+| `POST` | `/ratings/` | `UserRating` | Create or update a rating. **No auth required currently.** |
+| `POST` | `/auth/register` | `UserPublic` | Create user. Returns `{id, username}`. No JWT yet. |
+| `POST` | `/auth/login` | `UserPublic` | Validate credentials. Returns `{id, username}`. No JWT yet. |
+
+---
+
+## API Changes Required for React Frontend
+
+| Phase | Method | Endpoint | Change |
+|-------|--------|----------|--------|
+| 1 | `GET` | `/books/?page={n}&limit={n}&genre={id}` | **Modify**: change `offset` to `page`-based. Return `{ items: Book[], total: N, page: N, limit: N }`. |
+| 1 | `GET` | `/books/search?q={query}&page={n}&limit={n}` | **New**: full-text search by title/author. Same paginated response shape. |
+| 1 | `GET` | `/reviews/{book_id}` | **Modify**: return empty `[]` instead of 404 when no reviews exist. |
+| 2 | `POST` | `/auth/login` | **Modify**: return JWT access token + set httpOnly refresh cookie. |
+| 2 | `POST` | `/auth/register` | **Modify**: return JWT access token + set httpOnly refresh cookie. |
+| 2 | `POST` | `/auth/refresh` | **New**: validate refresh cookie, issue new access token. |
+| 2 | `POST` | `/auth/logout` | **New**: clear refresh cookie. |
+| 2 | `POST` | `/ratings/` | **Modify**: require `Depends(get_current_user)`. Derive `user_id` from JWT, not request body. Request body: `{ book_id: int, rating: int }`. |
+| 3 | `GET` | `/recommendations/{user_id}` | **New**: personalized recommendations from SVD recommender. |
+
+---
+
+## API Error Response Format
+
+All backend error responses use the standard FastAPI shape:
+
+```json
+{ "detail": "Human-readable error message" }
+```
+
+Validation errors (422) return an array:
+
+```json
+{ "detail": [{ "loc": ["query", "page"], "msg": "value is not a valid integer", "type": "type_error.integer" }] }
+```
+
+**Frontend error handling rules:**
+1. `detail` is a string → display it directly in a toast.
+2. `detail` is an array (validation error) → display "Invalid request. Please check your input."
+3. Network error (no response) → display "Cannot connect to server. Please try again."
+4. 500 error → display "Something went wrong. Please try again later." (never show raw server text).
 
 ---
 
@@ -220,8 +322,8 @@ frontend/               # Replaces existing Streamlit app
 Desktop-first, mobile-friendly:
 
 - **Desktop (1024px+):** 4-column book grid, genre sidebar visible on left.
-- **Tablet (768-1023px):** 3-column grid, sidebar collapses to horizontal filter bar or hamburger.
-- **Mobile (<768px):** 2-column grid, genre filter as dropdown/modal, search bar full-width.
+- **Tablet (768-1023px):** 3-column grid, genre sidebar collapses to a horizontal scrollable chip bar above the grid.
+- **Mobile (<768px):** 2-column grid, genre filter as a dropdown select above the grid, search bar full-width.
 
 ---
 
@@ -322,8 +424,19 @@ interface PaginatedResponse<T> {
 
 ---
 
+## Security Hardening (Pre-Production)
+
+Not required for development, but must be addressed before any production deployment:
+
+- **Security headers middleware:** Add `Content-Security-Policy`, `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Strict-Transport-Security`, `Referrer-Policy: strict-origin-when-cross-origin`.
+- **Error response sanitization:** Ensure `debug=False` in production. Global exception handler returns generic 500 responses; full tracebacks logged server-side only.
+- **Credentials management:** `.env` must be in `.gitignore`. Remove hardcoded credential defaults from source. Require `DATABASE_URL` and `SECRET_KEY` environment variables to be set.
+
+---
+
 ## Open Questions for Future Phases
 
 - Should book detail pages be SSR-friendly for SEO (would require migrating to Next.js or Remix)?
 - Should the recommender run as a background Dagster job or be computed on-demand per request?
 - Will pgvector-based semantic search replace or augment the text search endpoint?
+- The ETL pipeline computes an `is_fiction` flag via genre classification, but it is not persisted to the database (`Book` model lacks this column). Fiction/non-fiction distinction is currently handled via genre filter. Add a dedicated flag if explicit filtering is desired.

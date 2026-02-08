@@ -111,7 +111,7 @@ REQUEST_FINGERPRINTER_IMPLEMENTATION = "2.7"
 TWISTED_REACTOR = "twisted.internet.asyncioreactor.AsyncioSelectorReactor"
 FEED_EXPORT_ENCODING = "utf-8"
 FEEDS = {
-    "/scraper/output/raw/books.jsonl": {
+    "output/raw/books.jsonl": {
         'format': 'jsonl',
         'store_empty': False,
         'fields': None,

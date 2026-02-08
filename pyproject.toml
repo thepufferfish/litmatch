@@ -8,9 +8,15 @@ dependencies = [
     "dagster>=1.11.15",
     "dagster-dg-cli>=1.11.15",
     "dagster-webserver>=1.11.15",
+    "fastapi[standard]>=0.128.5",
     "pandas>=2.3.3",
+    "passlib[bcrypt]>=1.7.4",
     "pgvector>=0.4.1",
     "psycopg2>=2.9.11",
+    "psycopg2-binary>=2.9.11",
+    "python-jose[cryptography]>=3.3.0",
+    "slowapi>=0.1.9",
+    "sqlalchemy>=2.0.14,<2.1.0",
     "sqlmodel>=0.0.27",
 ]
 
@@ -18,6 +24,7 @@ dependencies = [
 dev = [
     "dagster-webserver",
     "dagster-dg-cli",
+    "pytest>=9.0.2",
 ]
 
 [build-system]
