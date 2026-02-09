@@ -34,6 +34,7 @@ from backend.db.models import (
     PaginatedResponse,
     RatingCreate,
     Review,
+    ReviewRead,
     User,
     UserCreate,
     UserPublic,
@@ -325,9 +326,17 @@ def read_book(*, session: Session = Depends(get_session), book_id: int):
 # Reviews & Genres
 # ---------------------------------------------------------------------------
 
-@app.get("/reviews/{book_id}", response_model=list[Review])
+@app.get("/reviews/{book_id}", response_model=list[ReviewRead])
 def read_reviews(*, session: Session = Depends(get_session), book_id: int):
-    reviews = session.exec(select(Review).where(Review.book_id == book_id)).all()
+    stmt = (
+        select(Review)
+        .options(
+            selectinload(Review.critic),
+            selectinload(Review.publication),
+        )
+        .where(Review.book_id == book_id)
+    )
+    reviews = session.exec(stmt).all()
     return reviews
 
 

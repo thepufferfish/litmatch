@@ -86,6 +86,27 @@ class BookRead(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class CriticRead(BaseModel):
+    id: int
+    name: str
+    model_config = {"from_attributes": True}
+
+class PublicationRead(BaseModel):
+    id: int
+    name: str
+    model_config = {"from_attributes": True}
+
+class ReviewRead(BaseModel):
+    id: int
+    book_id: int
+    rating: int
+    review: str
+    url: str | None = None
+    critic: CriticRead | None = None
+    publication: PublicationRead | None = None
+    model_config = {"from_attributes": True}
+
+
 class Critic(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
     name: str = Field(unique=True)

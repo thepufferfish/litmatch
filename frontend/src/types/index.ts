@@ -28,7 +28,7 @@ export interface Review {
   book_id: number;
   rating: number;
   review: string;
-  url: string;
+  url: string | null;
   critic: Critic | null;
   publication: Publication | null;
 }

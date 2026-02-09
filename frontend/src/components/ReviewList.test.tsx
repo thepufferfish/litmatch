@@ -197,6 +197,53 @@ describe("ReviewList", () => {
     });
   });
 
+  describe("review link", () => {
+    it("renders a 'Read full review' link when url is present", () => {
+      const review = createReview({ url: "https://example.com/review/1" });
+      render(<ReviewList reviews={[review]} />);
+
+      const link = screen.getByRole("link", { name: /read full review/i });
+      expect(link).toBeInTheDocument();
+      expect(link).toHaveAttribute("href", "https://example.com/review/1");
+    });
+
+    it("opens link in a new tab with security attributes", () => {
+      const review = createReview({ url: "https://example.com/review/1" });
+      render(<ReviewList reviews={[review]} />);
+
+      const link = screen.getByRole("link", { name: /read full review/i });
+      expect(link).toHaveAttribute("target", "_blank");
+      expect(link).toHaveAttribute("rel", "noopener noreferrer");
+    });
+
+    it("does not render a link when url is empty string", () => {
+      const review = createReview({ url: "" });
+      render(<ReviewList reviews={[review]} />);
+
+      expect(
+        screen.queryByRole("link", { name: /read full review/i })
+      ).not.toBeInTheDocument();
+    });
+
+    it("does not render a link for javascript: URLs", () => {
+      const review = createReview({ url: "javascript:alert(1)" });
+      render(<ReviewList reviews={[review]} />);
+
+      expect(
+        screen.queryByRole("link", { name: /read full review/i })
+      ).not.toBeInTheDocument();
+    });
+
+    it("does not render a link when url is null", () => {
+      const review = createReview({ url: null });
+      render(<ReviewList reviews={[review]} />);
+
+      expect(
+        screen.queryByRole("link", { name: /read full review/i })
+      ).not.toBeInTheDocument();
+    });
+  });
+
   describe("exactly 6 reviews (boundary + 1)", () => {
     it("shows first 5 reviews with expand button", () => {
       const reviews = createReviews(6);

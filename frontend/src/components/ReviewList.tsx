@@ -5,6 +5,15 @@ interface ReviewListProps {
   reviews: Review[];
 }
 
+function isSafeUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === "https:" || parsed.protocol === "http:";
+  } catch {
+    return false;
+  }
+}
+
 function getRatingLabel(rating: number): {
   label: string;
   className: string;
@@ -49,6 +58,16 @@ function ReviewItem({ review }: { review: Review }) {
         <p className="text-ink-light text-sm leading-relaxed line-clamp-4">
           {review.review}
         </p>
+      )}
+      {review.url && isSafeUrl(review.url) && (
+        <a
+          href={review.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-block mt-2 text-xs font-medium text-leather hover:text-leather-light transition-colors"
+        >
+          Read full review &rarr;
+        </a>
       )}
     </article>
   );
