@@ -36,12 +36,15 @@ api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
 
 async function attemptTokenRefresh(): Promise<string | null> {
   try {
-    const { data } = await axios.post(
-      "/api/auth/refresh",
-      {},
-      { withCredentials: true }
+    // Use the configured api instance (not bare axios) so the request goes
+    // through the correct baseURL ("/api") and Vite proxy configuration.
+    // Bare axios.post("/api/auth/refresh") bypasses proxy rewriting in
+    // production, resulting in a 404.
+    const { data } = await api.post<{ access_token: string }>(
+      "/auth/refresh",
+      {}
     );
-    const newToken = data.access_token as string;
+    const newToken = data.access_token;
     setToken(newToken);
     return newToken;
   } catch {

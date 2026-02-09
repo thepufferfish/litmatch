@@ -116,6 +116,271 @@ function setupDefaultMocks(overrides?: {
 
 // ── Tests ────────────────────────────────────────────────────────────
 
+describe("BookDetailPage - Core rendering", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("shows 'Book not found' when book data is null (error state)", () => {
+    mockUseBook.mockReturnValue({
+      data: null,
+      isLoading: false,
+      error: new Error("Not found"),
+    });
+    mockUseReviews.mockReturnValue({ data: [], isLoading: false });
+    mockUseAuth.mockReturnValue({
+      user: null,
+      isAuthenticated: false,
+      isLoading: false,
+      login: vi.fn(),
+      register: vi.fn(),
+      logout: vi.fn(),
+      getAccessToken: vi.fn(),
+    });
+    mockUseUserRating.mockReturnValue({ data: null, isLoading: false });
+
+    renderWithProviders();
+
+    expect(screen.getByText("Book not found")).toBeInTheDocument();
+    expect(
+      screen.getByText(/doesn.t exist or has been removed/i)
+    ).toBeInTheDocument();
+  });
+
+  it("shows 'Book not found' when there is an error and no data", () => {
+    mockUseBook.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      error: { message: "Network error" },
+    });
+    mockUseReviews.mockReturnValue({ data: [], isLoading: false });
+    mockUseAuth.mockReturnValue({
+      user: null,
+      isAuthenticated: false,
+      isLoading: false,
+      login: vi.fn(),
+      register: vi.fn(),
+      logout: vi.fn(),
+      getAccessToken: vi.fn(),
+    });
+    mockUseUserRating.mockReturnValue({ data: null, isLoading: false });
+
+    renderWithProviders();
+
+    expect(screen.getByText("Book not found")).toBeInTheDocument();
+  });
+
+  it("renders book title and author when data loads successfully", () => {
+    setupDefaultMocks();
+
+    renderWithProviders();
+
+    expect(screen.getByText("Test Book")).toBeInTheDocument();
+    expect(screen.getByText("Jane Author")).toBeInTheDocument();
+  });
+
+  it("renders publisher name", () => {
+    setupDefaultMocks();
+
+    renderWithProviders();
+
+    expect(screen.getByText("Test Press")).toBeInTheDocument();
+  });
+
+  it("renders book description", () => {
+    setupDefaultMocks();
+
+    renderWithProviders();
+
+    expect(screen.getByText("A test book.")).toBeInTheDocument();
+  });
+
+  it("renders 'No description available' when description is empty", () => {
+    mockUseBook.mockReturnValue({
+      data: { ...mockBook, description: "" },
+      isLoading: false,
+      error: null,
+    });
+    mockUseReviews.mockReturnValue({ data: [], isLoading: false });
+    mockUseAuth.mockReturnValue({
+      user: null,
+      isAuthenticated: false,
+      isLoading: false,
+      login: vi.fn(),
+      register: vi.fn(),
+      logout: vi.fn(),
+      getAccessToken: vi.fn(),
+    });
+    mockUseUserRating.mockReturnValue({ data: null, isLoading: false });
+
+    renderWithProviders();
+
+    expect(screen.getByText("No description available.")).toBeInTheDocument();
+  });
+
+  it("renders cover image when book has a cover", () => {
+    mockUseBook.mockReturnValue({
+      data: { ...mockBook, cover: "https://example.com/cover.jpg" },
+      isLoading: false,
+      error: null,
+    });
+    mockUseReviews.mockReturnValue({ data: [], isLoading: false });
+    mockUseAuth.mockReturnValue({
+      user: null,
+      isAuthenticated: false,
+      isLoading: false,
+      login: vi.fn(),
+      register: vi.fn(),
+      logout: vi.fn(),
+      getAccessToken: vi.fn(),
+    });
+    mockUseUserRating.mockReturnValue({ data: null, isLoading: false });
+
+    renderWithProviders();
+
+    const img = screen.getByAltText("Cover of Test Book");
+    expect(img).toBeInTheDocument();
+    expect(img).toHaveAttribute("src", "https://example.com/cover.jpg");
+  });
+
+  it("renders genre links", () => {
+    setupDefaultMocks();
+
+    renderWithProviders();
+
+    const genreLink = screen.getByText("Fiction");
+    expect(genreLink.closest("a")).toHaveAttribute("href", "/genre/fiction");
+  });
+
+  it("renders 'Back to browsing' button", () => {
+    setupDefaultMocks();
+
+    renderWithProviders();
+
+    expect(screen.getByText("Back to browsing")).toBeInTheDocument();
+  });
+
+  it("renders publish date formatted as a readable string", () => {
+    setupDefaultMocks();
+
+    renderWithProviders();
+
+    // The exact date string depends on the timezone of the test runner.
+    // "2024-01-01" may render as "January 1, 2024" or "December 31, 2023"
+    // depending on UTC offset. We just verify some date text is present.
+    const dateText = screen.getByText(/202[34]/);
+    expect(dateText).toBeInTheDocument();
+  });
+
+  it("renders 'Unknown Author' when author is null", () => {
+    mockUseBook.mockReturnValue({
+      data: { ...mockBook, author: null },
+      isLoading: false,
+      error: null,
+    });
+    mockUseReviews.mockReturnValue({ data: [], isLoading: false });
+    mockUseAuth.mockReturnValue({
+      user: null,
+      isAuthenticated: false,
+      isLoading: false,
+      login: vi.fn(),
+      register: vi.fn(),
+      logout: vi.fn(),
+      getAccessToken: vi.fn(),
+    });
+    mockUseUserRating.mockReturnValue({ data: null, isLoading: false });
+
+    renderWithProviders();
+
+    expect(screen.getByText("Unknown Author")).toBeInTheDocument();
+  });
+
+  it("shows existing rating text when user has rated", () => {
+    setupDefaultMocks({
+      isAuthenticated: true,
+      user: { id: 10, username: "reader" },
+      existingRating: mockRating,
+    });
+
+    renderWithProviders();
+
+    expect(screen.getByText("You rated this 4/5")).toBeInTheDocument();
+  });
+
+  it("renders review count in critic reviews heading", () => {
+    mockUseBook.mockReturnValue({
+      data: mockBook,
+      isLoading: false,
+      error: null,
+    });
+    mockUseReviews.mockReturnValue({
+      data: [
+        {
+          id: 1,
+          book_id: 42,
+          rating: 4,
+          review: "Great book",
+          url: "https://example.com",
+          critic: { id: 1, name: "Critic" },
+          publication: null,
+        },
+        {
+          id: 2,
+          book_id: 42,
+          rating: 3,
+          review: "Good book",
+          url: "https://example.com",
+          critic: { id: 2, name: "Other Critic" },
+          publication: null,
+        },
+      ],
+      isLoading: false,
+    });
+    mockUseAuth.mockReturnValue({
+      user: null,
+      isAuthenticated: false,
+      isLoading: false,
+      login: vi.fn(),
+      register: vi.fn(),
+      logout: vi.fn(),
+      getAccessToken: vi.fn(),
+    });
+    mockUseUserRating.mockReturnValue({ data: null, isLoading: false });
+
+    renderWithProviders();
+
+    expect(screen.getByText("(2)")).toBeInTheDocument();
+  });
+
+  it("shows reviews loading skeleton when reviews are loading", () => {
+    mockUseBook.mockReturnValue({
+      data: mockBook,
+      isLoading: false,
+      error: null,
+    });
+    mockUseReviews.mockReturnValue({
+      data: undefined,
+      isLoading: true,
+    });
+    mockUseAuth.mockReturnValue({
+      user: null,
+      isAuthenticated: false,
+      isLoading: false,
+      login: vi.fn(),
+      register: vi.fn(),
+      logout: vi.fn(),
+      getAccessToken: vi.fn(),
+    });
+    mockUseUserRating.mockReturnValue({ data: null, isLoading: false });
+
+    const { container } = renderWithProviders();
+
+    // Should have skeleton shimmer elements for reviews
+    const skeletons = container.querySelectorAll(".skeleton-shimmer");
+    expect(skeletons.length).toBeGreaterThan(0);
+  });
+});
+
 describe("BookDetailPage - Rating Section", () => {
   beforeEach(() => {
     vi.clearAllMocks();

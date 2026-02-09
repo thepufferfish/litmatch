@@ -1,14 +1,14 @@
 import re
 from typing import Generic, TypeVar
 
-from pydantic import field_validator
+from pydantic import BaseModel, field_validator
 from sqlmodel import Field, Relationship, SQLModel
 from datetime import date, datetime
 from pgvector.sqlalchemy import Vector
 
 T = TypeVar("T")
 
-class PaginatedResponse(SQLModel, Generic[T]):
+class PaginatedResponse(BaseModel, Generic[T]):
     items: list[T]
     total: int
     page: int
@@ -53,6 +53,39 @@ class Genre(SQLModel, table=True):
     name: str = Field(unique=True)
 
     books: list['Book'] = Relationship(back_populates='genres', link_model=BookGenreLink)
+
+
+# --- Read models (include relationships for API responses) ---
+
+class GenreRead(BaseModel):
+    id: int
+    name: str
+    model_config = {"from_attributes": True}
+
+class AuthorRead(BaseModel):
+    id: int
+    name: str
+    model_config = {"from_attributes": True}
+
+class PublisherRead(BaseModel):
+    id: int
+    name: str
+    model_config = {"from_attributes": True}
+
+class BookRead(BaseModel):
+    id: int
+    title: str
+    author_id: int | None
+    publisher_id: int | None
+    publish_date: date | None
+    description: str
+    url: str
+    cover: str | None
+    author: AuthorRead | None = None
+    publisher: PublisherRead | None = None
+    genres: list[GenreRead] = []
+    model_config = {"from_attributes": True}
+
 
 class Critic(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)

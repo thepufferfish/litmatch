@@ -9,7 +9,7 @@ export function Pagination({
   totalPages,
   onPageChange,
 }: PaginationProps) {
-  if (totalPages <= 1) return null;
+  if (!Number.isFinite(totalPages) || totalPages <= 1) return null;
 
   const pages = buildPageNumbers(currentPage, totalPages);
 

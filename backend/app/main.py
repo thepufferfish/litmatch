@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import bcrypt
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
+from sqlalchemy.orm import selectinload
 from sqlmodel import Session, create_engine, func, or_, select, case
 
 from backend.app.auth import (
@@ -27,6 +28,7 @@ from backend.db.models import (
     Author,
     AuthResponse,
     Book,
+    BookRead,
     Genre,
     PaginatedResponse,
     RatingCreate,
@@ -213,7 +215,7 @@ def logout(request: Request, response: Response, *, session: Session = Depends(g
 # Book endpoints
 # ---------------------------------------------------------------------------
 
-@app.get("/books/", response_model=PaginatedResponse[Book])
+@app.get("/books/", response_model=PaginatedResponse[BookRead])
 def read_books(
     *,
     session: Session = Depends(get_session),
@@ -222,7 +224,11 @@ def read_books(
     genre: int | None = None,
     user_id: int | None = None,
 ):
-    stmt = select(Book)
+    stmt = select(Book).options(
+        selectinload(Book.author),
+        selectinload(Book.publisher),
+        selectinload(Book.genres),
+    )
     count_stmt = select(func.count(Book.id))
     if genre:
         stmt = stmt.join(Book.genres).where(Genre.id == genre)
@@ -241,7 +247,7 @@ def escape_like(value: str) -> str:
     return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
-@app.get("/books/search", response_model=PaginatedResponse[Book])
+@app.get("/books/search", response_model=PaginatedResponse[BookRead])
 def search_books(
     *,
     session: Session = Depends(get_session),
@@ -264,6 +270,11 @@ def search_books(
     )
     stmt = (
         select(Book)
+        .options(
+            selectinload(Book.author),
+            selectinload(Book.publisher),
+            selectinload(Book.genres),
+        )
         .outerjoin(Author, Book.author_id == Author.id)
         .where(filter_clause)
         .order_by(rank, Book.title)
@@ -279,9 +290,18 @@ def search_books(
     return PaginatedResponse(items=books, total=total, page=page, limit=limit)
 
 
-@app.get("/books/{book_id}", response_model=Book)
+@app.get("/books/{book_id}", response_model=BookRead)
 def read_book(*, session: Session = Depends(get_session), book_id: int):
-    book = session.get(Book, book_id)
+    stmt = (
+        select(Book)
+        .options(
+            selectinload(Book.author),
+            selectinload(Book.publisher),
+            selectinload(Book.genres),
+        )
+        .where(Book.id == book_id)
+    )
+    book = session.exec(stmt).first()
     if not book:
         raise HTTPException(status_code=404, detail="Book not found")
     return book

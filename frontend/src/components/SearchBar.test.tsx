@@ -73,4 +73,29 @@ describe("SearchBar", () => {
 
     expect(onSearch).not.toHaveBeenCalled();
   });
+
+  it("calls onClear and resets value when clear button is clicked", async () => {
+    const user = userEvent.setup();
+    const onClear = vi.fn();
+    render(
+      <SearchBar initialValue="test query" onSearch={vi.fn()} onClear={onClear} />
+    );
+
+    // The clear button (X icon) only appears when value is non-empty
+    const clearButton = screen.getByRole("button", { name: /clear search/i });
+    await user.click(clearButton);
+
+    expect(onClear).toHaveBeenCalledTimes(1);
+    expect(screen.getByPlaceholderText(/search/i)).toHaveValue("");
+  });
+
+  it("does not show clear button when input is empty", () => {
+    render(
+      <SearchBar initialValue="" onSearch={vi.fn()} onClear={vi.fn()} />
+    );
+
+    expect(
+      screen.queryByRole("button", { name: /clear search/i })
+    ).not.toBeInTheDocument();
+  });
 });

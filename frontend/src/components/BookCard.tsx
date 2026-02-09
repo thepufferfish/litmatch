@@ -26,7 +26,7 @@ function BookPlaceholderCover() {
 }
 
 export function BookCard({ book }: BookCardProps) {
-  const sortedGenres = [...book.genres].sort((a, b) =>
+  const sortedGenres = [...(book.genres ?? [])].sort((a, b) =>
     a.name.localeCompare(b.name)
   );
   const displayedGenres = sortedGenres.slice(0, 3);

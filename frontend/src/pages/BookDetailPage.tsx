@@ -64,7 +64,7 @@ export function BookDetailPage() {
     );
   }
 
-  const sortedGenres = [...book.genres].sort((a, b) =>
+  const sortedGenres = [...(book.genres ?? [])].sort((a, b) =>
     a.name.localeCompare(b.name)
   );
 

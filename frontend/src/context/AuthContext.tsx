@@ -79,6 +79,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = useCallback(async () => {
     try {
       await api.post("/auth/logout");
+    } catch {
+      // Server-side logout failure is non-critical.
+      // We still clear local state so the user is logged out on the client.
     } finally {
       accessTokenRef.current = null;
       setUser(null);

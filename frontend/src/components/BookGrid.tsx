@@ -3,7 +3,7 @@ import { BookCard } from "@/components/BookCard";
 import { SkeletonGrid } from "@/components/Skeleton";
 
 interface BookGridProps {
-  books?: Book[];
+  books: Book[];
   isLoading: boolean;
 }
 
@@ -12,7 +12,7 @@ export function BookGrid({ books, isLoading }: BookGridProps) {
     return <SkeletonGrid count={24} />;
   }
 
-  if (!books?.length) {
+  if (books.length === 0) {
     return null;
   }
 

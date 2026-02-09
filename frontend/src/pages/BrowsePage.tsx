@@ -45,6 +45,7 @@ export function BrowsePage() {
 
   const activeQuery = isSearching ? searchBooksQuery : booksQuery;
   const { data, isLoading } = activeQuery;
+  const items = data?.items ?? [];
 
   // Find the active genre name for the empty state message
   const activeGenreName = resolvedGenre?.name ?? null;
@@ -56,7 +57,7 @@ export function BrowsePage() {
   useEffect(() => {
     if (
       data &&
-      data.items.length === 0 &&
+      items.length === 0 &&
       data.total > 0 &&
       data.page > 1
     ) {
@@ -64,9 +65,11 @@ export function BrowsePage() {
       params.delete("page");
       setSearchParams(params, { replace: true });
     }
-  }, [data, searchParams, setSearchParams]);
+  }, [data, items, searchParams, setSearchParams]);
 
-  const totalPages = data ? Math.ceil(data.total / data.limit) : 0;
+  const totalPages = data && data.limit > 0
+    ? Math.ceil((data.total ?? 0) / data.limit)
+    : 0;
 
   const handlePageChange = (newPage: number) => {
     const params = new URLSearchParams(searchParams);
@@ -97,8 +100,12 @@ export function BrowsePage() {
     setSearchParams(params);
   };
 
-  // Determine empty state
-  const isEmpty = !isLoading && data && data.items.length === 0 && data.total === 0;
+  // Determine empty state: show when not loading and either:
+  // - data has not arrived yet (undefined)
+  // - data.items is missing or empty
+  const isEmpty = !isLoading && (
+    !data || items.length === 0
+  );
 
   // Handle genre not found
   if (genreNotFound) {
@@ -179,7 +186,7 @@ export function BrowsePage() {
           />
         ) : (
           <>
-            <BookGrid books={data?.items} isLoading={isLoading} />
+            <BookGrid books={items} isLoading={isLoading} />
             <Pagination
               currentPage={page}
               totalPages={totalPages}

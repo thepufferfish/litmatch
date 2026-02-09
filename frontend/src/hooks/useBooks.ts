@@ -2,6 +2,25 @@ import { useQuery } from "@tanstack/react-query";
 import api from "@/api/client";
 import type { Book, PaginatedResponse } from "@/types";
 
+/**
+ * Normalize a paginated API response to ensure all required fields
+ * are present with safe default values. Prevents NaN/Infinity from
+ * propagating into pagination calculations.
+ */
+function normalizePaginatedResponse<T>(
+  data: Partial<PaginatedResponse<T>>,
+  fallbackLimit: number
+): PaginatedResponse<T> {
+  return {
+    items: Array.isArray(data.items) ? data.items : [],
+    total: typeof data.total === "number" && Number.isFinite(data.total) && data.total >= 0 ? data.total : 0,
+    page: typeof data.page === "number" && Number.isFinite(data.page) && data.page >= 1 ? data.page : 1,
+    limit: typeof data.limit === "number" && Number.isFinite(data.limit) && data.limit > 0
+      ? data.limit
+      : fallbackLimit,
+  };
+}
+
 interface UseBooksParams {
   page?: number;
   limit?: number;
@@ -17,7 +36,7 @@ export function useBooks({ page = 1, limit = 24, genre }: UseBooksParams = {}) {
       const { data } = await api.get<PaginatedResponse<Book>>("/books/", {
         params,
       });
-      return data;
+      return normalizePaginatedResponse(data, limit);
     },
     staleTime: 5 * 60 * 1000,
   });
@@ -55,7 +74,7 @@ export function useSearchBooks({
           params: { q, page, limit },
         }
       );
-      return data;
+      return normalizePaginatedResponse(data, limit);
     },
     staleTime: 5 * 60 * 1000,
     enabled: q.length >= 2,
