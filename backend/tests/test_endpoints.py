@@ -58,6 +58,13 @@ def _register_user(client: TestClient, username: str = "testuser1", password: st
     )
 
 
+class TestHealth:
+    def test_health_check(self, client: TestClient):
+        response = client.get("/health")
+        assert response.status_code == 200
+        assert response.json() == {"status": "ok"}
+
+
 class TestRegister:
     def test_register_success(self, client: TestClient):
         response = _register_user(client, "newuser1")

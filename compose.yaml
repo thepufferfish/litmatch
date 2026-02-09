@@ -1,7 +1,7 @@
 services:
   db:
     image: pgvector/pgvector:pg18
-    restart: always
+    restart: unless-stopped
     environment:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
@@ -9,13 +9,21 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
 
   backend:
     build:
       context: ./backend
+    restart: unless-stopped
     depends_on:
-      - db
+      db:
+        condition: service_healthy
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
       SECRET_KEY: ${SECRET_KEY}
@@ -24,19 +32,28 @@ services:
       REFRESH_COOKIE_PATH: ${REFRESH_COOKIE_PATH:-/auth/refresh}
     ports:
       - "8000:8000"
-    #command: >
-      # fastapi run backend/app/main.py -p 8000
-      # uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
   scrapyd:
     build:
       context: ./scraper
+    restart: unless-stopped
     environment:
       PROXY_TOKEN: ${PROXY_TOKEN}
     ports:
-      - "6800:6800"
+      - "127.0.0.1:6800:6800"
     volumes:
       - shared_scraper_output:/scraper/output
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:6800/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
 
 volumes:
   postgres_data:

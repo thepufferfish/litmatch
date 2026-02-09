@@ -5,41 +5,64 @@
 | Service | Port | Image / Runtime | Health Check |
 |---------|------|-----------------|-------------|
 | PostgreSQL (pgvector) | 5432 | `pgvector/pgvector:pg18` | `pg_isready -U bookuser -d bookdb` |
-| FastAPI Backend | 8000 (compose) / 80 (Makefile) | Python 3.12 (Docker) | `GET /docs` (Swagger UI) |
-| Scrapyd | 6800 | Python Alpine (Docker) | `GET http://localhost:6800/` |
+| FastAPI Backend | 8000 (compose) / 80 (Makefile) | Python 3.12 (Podman) | `GET /health` → `{"status": "ok"}` |
+| Scrapyd | 6800 | Python Alpine (Podman) | `GET http://localhost:6800/` |
 | Dagster UI | 3000 | Local (`dg dev`) | `GET http://localhost:3000` |
 | Vite Dev Server | 5173 | Local (`npm run dev`) | `GET http://localhost:5173` |
 
 ## Deployment
 
-### Docker Compose (recommended for development)
+### Podman Compose (recommended for development)
 
 ```bash
 # Start all services
-docker compose up --build -d
+podman compose up --build -d
 
 # Verify services are running
-docker compose ps
+podman compose ps
 
 # Check logs
-docker compose logs -f backend
-docker compose logs -f db
+podman compose logs -f backend
+podman compose logs -f db
 ```
+
+### Health Checks
+
+All compose services have health checks. View status:
+
+```bash
+# Show service health status
+podman compose ps
+
+# Check individual service health
+podman compose exec db pg_isready -U bookuser -d bookdb
+curl http://localhost:8000/health
+wget --spider -q http://localhost:6800/
+```
+
+The backend `/health` endpoint verifies database connectivity by executing `SELECT 1`.
+If the database is unreachable, the health check will fail and the service will be
+marked as unhealthy.
+
+**Startup ordering:** The backend service waits for the database to be healthy
+(`depends_on: condition: service_healthy`) before starting. The entrypoint script
+runs database initialization (table creation + pgvector extension) before launching
+the FastAPI server.
 
 ### Standalone (Makefile targets)
 
 ```bash
-# Creates a standalone PostgreSQL container on the litnet Docker network
+# Creates a standalone PostgreSQL container on the litnet Podman network
 make create-db
 
-# Initialize schema (runs outside Docker, connects to localhost:5432)
+# Initialize schema (runs outside the container, connects to localhost:5432)
 python -m backend.database
 
 # Build and run API container on litnet network (exposes port 80)
 make start-api
 ```
 
-**Port note**: `make start-api` exposes port **80**, while `docker compose` exposes port **8000**. Use compose for development.
+**Port note**: `make start-api` exposes port **80**, while `podman compose` exposes port **8000**. Use compose for development.
 
 ### Database Initialization
 
@@ -52,7 +75,8 @@ Run manually:
 python -m backend.database
 ```
 
-Or it runs automatically during the Docker backend build (`RUN python -m backend.database` in `backend/Dockerfile`).
+Or it runs automatically at container startup via `backend/entrypoint.sh`, which
+executes `python -m backend.database` before starting the FastAPI server.
 
 ## ETL Pipeline (Dagster)
 
@@ -99,7 +123,7 @@ curl http://localhost:6800/schedule.json -d project=bookmarks -d spider=bookmark
 curl http://localhost:6800/listjobs.json?project=bookmarks
 ```
 
-Output is written to the `shared_scraper_output` Docker volume as `books.jsonl`.
+Output is written to the `shared_scraper_output` Podman volume as `books.jsonl`.
 
 ## Common Issues and Fixes
 
@@ -108,16 +132,16 @@ Output is written to the `shared_scraper_output` Docker volume as `books.jsonl`.
 **Symptom**: `psycopg2.OperationalError: could not connect to server`
 
 **Fix**:
-1. Verify the database container is running: `docker compose ps db`
+1. Verify the database container is running: `podman compose ps db`
 2. Check that port 5432 is not in use: `lsof -i :5432`
 3. Verify `.env` has correct `DATABASE_URL`
-4. If using Makefile targets, ensure the `litnet` Docker network exists: `docker network create litnet`
+4. If using Makefile targets, ensure the `litnet` Podman network exists: `podman network create litnet`
 
 ### pgvector extension not found
 
 **Symptom**: `ERROR: could not open extension control file "/usr/share/postgresql/.../vector.control"`
 
-**Fix**: Ensure you're using the `pgvector/pgvector:pg18` image, not a plain `postgres` image. The Makefile `create-db` target uses plain `postgres`; prefer `docker compose up db -d` instead.
+**Fix**: Ensure you're using the `pgvector/pgvector:pg18` image, not a plain `postgres` image. The Makefile `create-db` target uses plain `postgres`; prefer `podman compose up db -d` instead.
 
 ### Frontend API requests return 404
 
@@ -136,17 +160,17 @@ Output is written to the `shared_scraper_output` Docker volume as `books.jsonl`.
 **Fix**:
 1. Run the scraper first to generate `books.jsonl`
 2. Verify the `RAW_DATA_DIR` path in `src/litmatch/defs/assets.py` matches your local volume mount
-3. Check the Docker volume: `docker volume inspect litmatch_shared_scraper_output`
+3. Check the Podman volume: `podman volume inspect litmatch_shared_scraper_output`
 
-### Port conflict between Makefile and Docker Compose
+### Port conflict between Makefile and Podman Compose
 
 **Symptom**: `Bind for 0.0.0.0:5432 failed: port is already allocated`
 
-**Fix**: Don't mix Makefile targets and Docker Compose. Use one or the other:
-- **Compose**: `docker compose up --build -d` (ports: 5432, 8000, 6800)
+**Fix**: Don't mix Makefile targets and Podman Compose. Use one or the other:
+- **Compose**: `podman compose up --build -d` (ports: 5432, 8000, 6800)
 - **Makefile**: `make start-backend` (ports: 5432, 80)
 
-Stop the conflicting service first: `docker compose down` or `docker stop db backend`
+Stop the conflicting service first: `podman compose down` or `podman stop db backend`
 
 ### Large etl.log file
 
@@ -161,11 +185,11 @@ rm -f etl.log
 
 ```bash
 # Stop the current backend
-docker compose stop backend
+podman compose stop backend
 
 # Rebuild from a specific commit
 git checkout <commit-hash> -- backend/
-docker compose up --build -d backend
+podman compose up --build -d backend
 ```
 
 ### Database rollback
@@ -177,13 +201,13 @@ There is no migration framework (e.g., Alembic) currently. Schema changes requir
 ### Creating a database backup
 
 ```bash
-docker compose exec db pg_dump -U bookuser bookdb > backup_$(date +%Y%m%d).sql
+podman compose exec db pg_dump -U bookuser bookdb > backup_$(date +%Y%m%d).sql
 ```
 
 ### Restoring from backup
 
 ```bash
-docker compose exec -T db psql -U bookuser bookdb < backup_YYYYMMDD.sql
+podman compose exec -T db psql -U bookuser bookdb < backup_YYYYMMDD.sql
 ```
 
 ## Monitoring
@@ -191,16 +215,16 @@ docker compose exec -T db psql -U bookuser bookdb < backup_YYYYMMDD.sql
 ### Container health
 
 ```bash
-docker compose ps
-docker compose logs --tail=50 backend
-docker compose logs --tail=50 db
+podman compose ps
+podman compose logs --tail=50 backend
+podman compose logs --tail=50 db
 ```
 
 ### Database status
 
 ```bash
-docker compose exec db pg_isready -U bookuser -d bookdb
-docker compose exec db psql -U bookuser -d bookdb -c "SELECT count(*) FROM book;"
+podman compose exec db pg_isready -U bookuser -d bookdb
+podman compose exec db psql -U bookuser -d bookdb -c "SELECT count(*) FROM book;"
 ```
 
 ### Dagster run status

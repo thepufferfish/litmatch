@@ -1,8 +1,11 @@
 # Deployment Roadmap
 
 **Target Environments:**
-1. **Local development** — Developer's machine, Docker Compose + Vite dev server
-2. **LAN server** — Mini PC on home/office network, full Docker Compose stack
+1. **Local development** — Developer's machine, Podman Compose + Vite dev server
+2. **LAN server** — Mini PC on home/office network, full Podman Compose stack
+
+**Container Runtime:** Podman (rootless, daemonless, Fedora-native). All `podman`
+and `podman compose` commands are drop-in replacements for their Docker equivalents.
 
 **Architecture:**
 
@@ -15,9 +18,9 @@ LAN clients --> Caddy (:80) --> FastAPI backend (:8000)
                     +--> Dagster UI (:3000) [optional]
 ```
 
-## Phase A: Local Development Improvements — NOT STARTED
+## Phase A: Local Development Improvements — DONE
 
-**Goal:** Clean up the existing Docker Compose workflow so `docker compose up -d`
+**Goal:** Clean up the existing Compose workflow so `podman compose up -d`
 gives a developer a working backend with health checks and proper startup ordering.
 
 ### Work Items
@@ -53,7 +56,7 @@ python -m backend.database
 exec "$@"
 ```
 
-**Docker Compose healthchecks:**
+**Compose healthchecks:**
 ```yaml
 db:
   healthcheck:
@@ -75,10 +78,10 @@ backend:
 ```
 
 ### Success Criteria
-- [ ] `docker compose up -d` starts db, backend, scrapyd with proper startup ordering
+- [ ] `podman compose up -d` starts db, backend, scrapyd with proper startup ordering
 - [ ] Backend waits for healthy database before starting
 - [ ] `curl http://localhost:8000/health` returns `{"status": "ok"}`
-- [ ] `docker compose ps` shows all services as "healthy"
+- [ ] `podman compose ps` shows all services as "healthy"
 - [ ] Frontend dev server (`npm run dev`) connects to backend via Vite proxy
 - [ ] `.env.example` exists and documents every required/optional variable
 - [ ] No secrets in `.env.example`
@@ -95,7 +98,7 @@ backend:
 | Step | Item | File(s) | Priority |
 |------|------|---------|----------|
 | B.1 | Create `Caddyfile` (reverse proxy + SPA serving) | `Caddyfile` | HIGH |
-| B.2 | Create `Dockerfile.caddy` (multi-stage: build frontend + Caddy) | `Dockerfile.caddy` | HIGH |
+| B.2 | Create `Containerfile.caddy` (multi-stage: build frontend + Caddy) | `Containerfile.caddy` | HIGH |
 | B.3 | Add `caddy` service to compose.yaml with `server` profile | `compose.yaml` | HIGH |
 | B.4 | Update `CORS_ORIGINS` in `.env` for LAN hostname | `.env` | HIGH |
 | B.5 | Create database backup script | `scripts/backup-db.sh` | HIGH |
@@ -135,7 +138,7 @@ backend:
 - `try_files {path} /index.html` supports React Router client-side routing
 - `auto_https off` because LAN-only, no public domain
 
-**Dockerfile.caddy** (multi-stage: builds frontend + serves via Caddy):
+**Containerfile.caddy** (multi-stage: builds frontend + serves via Caddy):
 ```dockerfile
 FROM node:22-slim AS frontend-build
 WORKDIR /app
@@ -149,44 +152,57 @@ COPY --from=frontend-build /app/dist /srv/frontend
 COPY Caddyfile /etc/caddy/Caddyfile
 ```
 
-**Docker Compose profiles** (single file, two modes):
+**Compose profiles** (single file, two modes):
 ```bash
 # Local dev (DB + backend + scraper only)
-docker compose up -d
+podman compose up -d
 
 # LAN server (full stack with Caddy)
-docker compose --profile server up -d
+podman compose --profile server up -d
 
 # LAN server + Dagster pipeline monitoring
-docker compose --profile server --profile dagster up -d
+podman compose --profile server --profile dagster up -d
 ```
 
-**systemd service** (`/etc/systemd/system/litmatch.service`):
+**Podman rootless setup** (one-time, enables user-level containers that survive logout):
+```bash
+# Enable lingering so user containers persist after logout
+loginctl enable-linger $USER
+
+# Enable and start the user-level podman socket (needed by podman compose)
+systemctl --user enable --now podman.socket
+```
+
+**systemd user service** (`~/.config/systemd/user/litmatch.service`):
 ```ini
 [Unit]
 Description=LitMatch Application Stack
-Requires=docker.service
-After=docker.service network-online.target
+Requires=podman.socket
+After=podman.socket network-online.target
 Wants=network-online.target
 
 [Service]
 Type=oneshot
 RemainAfterExit=yes
 WorkingDirectory=/home/framework/Projects/litmatch
-ExecStart=/usr/bin/docker compose --profile server --profile dagster up -d --remove-orphans
-ExecStop=/usr/bin/docker compose --profile server --profile dagster down
-ExecReload=/usr/bin/docker compose --profile server --profile dagster up -d --build --remove-orphans
+ExecStart=/usr/bin/podman compose --profile server --profile dagster up -d --remove-orphans
+ExecStop=/usr/bin/podman compose --profile server --profile dagster down
+ExecReload=/usr/bin/podman compose --profile server --profile dagster up -d --build --remove-orphans
 TimeoutStartSec=120
 
 [Install]
-WantedBy=multi-user.target
+WantedBy=default.target
 ```
 
 ```bash
-sudo systemctl daemon-reload
-sudo systemctl enable litmatch.service
-sudo systemctl start litmatch.service
+systemctl --user daemon-reload
+systemctl --user enable litmatch.service
+systemctl --user start litmatch.service
 ```
+
+> **Note:** Podman runs rootless by default on Fedora — no `sudo` needed for
+> container operations. The user-level systemd service avoids running the
+> application stack as root.
 
 **mDNS setup** (Fedora):
 ```bash
@@ -215,7 +231,7 @@ BACKUP_FILE="${BACKUP_DIR}/bookdb_${TIMESTAMP}.sql.gz"
 
 mkdir -p "$BACKUP_DIR"
 
-docker compose -f /home/framework/Projects/litmatch/compose.yaml \
+podman compose -f /home/framework/Projects/litmatch/compose.yaml \
   exec -T db pg_dump -U bookuser bookdb | gzip > "$BACKUP_FILE"
 
 if [ ! -s "$BACKUP_FILE" ]; then
@@ -239,21 +255,21 @@ Cron (daily at 4:00 AM):
 ```bash
 cd /home/framework/Projects/litmatch
 git pull origin dev
-sudo systemctl reload litmatch.service
-# Or: docker compose --profile server --profile dagster up -d --build --remove-orphans
+systemctl --user reload litmatch.service
+# Or: podman compose --profile server --profile dagster up -d --build --remove-orphans
 ```
 
 ### Success Criteria
-- [ ] `docker compose --profile server up -d` starts all services including Caddy
+- [ ] `podman compose --profile server up -d` starts all services including Caddy
 - [ ] `http://litmatch.local` serves the React SPA from any LAN device
 - [ ] `/api/books/` requests are proxied to the backend correctly
 - [ ] SPA client-side routing works (direct URL access to `/books/123`)
 - [ ] Login/register/logout work through the reverse proxy (cookies set correctly)
 - [ ] Only port 80 is accessible from the LAN
-- [ ] System auto-starts after reboot (`systemctl status litmatch`)
+- [ ] System auto-starts after reboot (`systemctl --user status litmatch`)
 - [ ] Daily backup runs and produces valid `.sql.gz` files
 - [ ] Backups older than 30 days are automatically pruned
-- [ ] Update procedure: `git pull && systemctl reload litmatch` works
+- [ ] Update procedure: `git pull && systemctl --user reload litmatch` works
 
 ## Phase C: Dagster Integration — NOT STARTED
 
@@ -272,7 +288,7 @@ sudo systemctl reload litmatch.service
 | C.5 | Update RUNBOOK.md with Dagster operational docs | `docs/RUNBOOK.md` | MEDIUM |
 
 ### Success Criteria
-- [ ] `docker compose --profile server --profile dagster up -d` starts everything
+- [ ] `podman compose --profile server --profile dagster up -d` starts everything
 - [ ] Dagster UI accessible at `http://litmatch.local/dagster/`
 - [ ] Weekly ETL schedule triggers and completes
 - [ ] Run history preserved after container restarts
@@ -301,9 +317,14 @@ sudo systemctl reload litmatch.service
 **Rationale:** Simple config (~20 lines), automatic HTTPS if ever needed, built-in static file serving eliminates a separate frontend container, good defaults (HTTP/2, compression, security headers).
 **Alternatives considered:** Nginx (more complex config), Traefik (overkill for static compose).
 
-### ADR-005: Docker Compose Profiles
+### ADR-005: Compose Profiles
 **Decision:** Use profiles to support both local dev and LAN server in a single compose file. Core services have no profile (always start). Caddy uses `server` profile. Dagster uses `dagster` profile.
 **Rationale:** Single source of truth, explicit activation, no override file complexity.
+
+### ADR-007: Podman over Docker
+**Decision:** Use Podman as the container runtime instead of Docker.
+**Rationale:** Podman is Fedora-native (pre-installed), runs rootless by default (no daemon, no root privileges), uses the same CLI and Compose file format as Docker, and supports user-level systemd services. OCI-compatible — same images, same registries, same Containerfiles.
+**Migration notes:** `docker` CLI commands map 1:1 to `podman`. `docker compose` maps to `podman compose`. Dockerfiles are valid Containerfiles. No changes to `compose.yaml` syntax are required.
 
 ### ADR-006: No TLS for LAN Deployment
 **Decision:** Serve over plain HTTP on port 80.
@@ -313,7 +334,7 @@ sudo systemctl reload litmatch.service
 ## Backup and Recovery
 
 ### Backup Strategy
-- **Tool:** `pg_dump` via Docker, compressed with gzip
+- **Tool:** `pg_dump` via Podman, compressed with gzip
 - **Frequency:** Daily at 4:00 AM via cron
 - **Retention:** 30 days
 - **Location:** `/home/framework/backups/litmatch/`
@@ -322,20 +343,20 @@ sudo systemctl reload litmatch.service
 ### Recovery Procedure
 ```bash
 # Stop backend to prevent writes
-docker compose stop backend
+podman compose stop backend
 
 # Restore from backup
 gunzip -c /home/framework/backups/litmatch/bookdb_YYYYMMDD_HHMMSS.sql.gz | \
-  docker compose exec -T db psql -U bookuser bookdb
+  podman compose exec -T db psql -U bookuser bookdb
 
 # Restart backend
-docker compose start backend
+podman compose start backend
 ```
 
 ### Disaster Recovery
-1. Install Linux + Docker on replacement hardware
+1. Install Fedora (or any Linux with Podman) on replacement hardware
 2. Clone the repository
 3. Copy `.env` from backup or recreate from `.env.example`
-4. `docker compose --profile server up -d`
+4. `podman compose --profile server up -d`
 5. Restore database from most recent backup
 6. Re-run scraper to refresh data

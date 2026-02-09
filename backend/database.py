@@ -1,13 +1,25 @@
 import os
 
-from sqlmodel import create_engine, Session, SQLModel, text
+from sqlmodel import Session, SQLModel, create_engine, text
 
-from backend.db import models
+from backend.db import models  # noqa: F401 — registers models with SQLModel metadata
 
-DATABASE_URL = os.environ.get("DATABASE_URL", "postgresql://bookuser:bookpassword@localhost:5432/bookdb")
 
-engine = create_engine(DATABASE_URL, echo=True)
-SQLModel.metadata.create_all(engine)
+def init_db() -> None:
+    """Create all tables and enable the pgvector extension."""
+    database_url = os.environ.get("DATABASE_URL")
+    if not database_url:
+        raise RuntimeError("DATABASE_URL environment variable must be set")
 
-with Session(engine) as session:
-    session.exec(text('CREATE EXTENSION IF NOT EXISTS vector'))
+    engine = create_engine(database_url, echo=True)
+    try:
+        SQLModel.metadata.create_all(engine)
+        with Session(engine) as session:
+            session.exec(text("CREATE EXTENSION IF NOT EXISTS vector"))
+            session.commit()
+    finally:
+        engine.dispose()
+
+
+if __name__ == "__main__":
+    init_db()

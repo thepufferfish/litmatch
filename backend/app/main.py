@@ -2,11 +2,12 @@ from datetime import datetime
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 import bcrypt
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from sqlalchemy.orm import selectinload
-from sqlmodel import Session, create_engine, func, or_, select, case
+from sqlmodel import Session, create_engine, func, or_, select, case, text
 
 from backend.app.auth import (
     create_access_token,
@@ -82,6 +83,19 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type"],
 )
+
+
+@app.get("/health")
+def health_check(*, session: Session = Depends(get_session)):
+    """Health check that verifies database connectivity."""
+    try:
+        session.exec(text("SELECT 1"))
+    except Exception:
+        return JSONResponse(
+            status_code=503,
+            content={"status": "error", "detail": "database unreachable"},
+        )
+    return {"status": "ok"}
 
 
 def _set_refresh_cookie(response: Response, raw_token: str) -> None:

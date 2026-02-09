@@ -16,7 +16,7 @@ LitMatch is a book discovery and recommendation platform with five components:
 |-----------|-------|--------|
 | Scraper | Operational | DONE |
 | ETL Pipeline | Phase 1 (Core pipeline) | IN PROGRESS |
-| ETL Pipeline | Phase 2 (Docker deployment) | NOT STARTED |
+| ETL Pipeline | Phase 2 (Podman deployment) | NOT STARTED |
 | ETL Pipeline | Phase 3 (Embeddings) | NOT STARTED |
 | ETL Pipeline | Phase 4 (Recommender training) | NOT STARTED |
 | Backend | Phase 1 (Browse API) | DONE |
@@ -26,7 +26,7 @@ LitMatch is a book discovery and recommendation platform with five components:
 | Frontend | Phase 2 (Auth & Ratings) | DONE |
 | Frontend | Phase 3 (Recommendations & Profile) | NOT STARTED |
 | Recommender | Standalone prototype | DONE (needs integration) |
-| Deployment | Phase A (Local dev improvements) | NOT STARTED |
+| Deployment | Phase A (Local dev improvements) | DONE |
 | Deployment | Phase B (LAN server) | NOT STARTED |
 | Deployment | Phase C (Dagster integration) | NOT STARTED |
 
@@ -52,14 +52,14 @@ Users can register, log in, and rate books.
 
 ### Milestone 3: Production-Ready Pipeline — IN PROGRESS
 
-Dagster pipeline runs fully automated in Docker with observability.
+Dagster pipeline runs fully automated in containers with observability.
 
 **Remaining:**
 - Dagster scraper trigger job, weekly schedule, file sensor
 - Asset metadata emission for Dagster UI
 - Retry policies on load_books
 - Quarantine file output
-- Docker Compose integration (dagster-webserver, dagster-daemon, dagster-code)
+- Podman Compose integration (dagster-webserver, dagster-daemon, dagster-code)
 - See: [Pipeline Roadmap](ROADMAP-PIPELINE.md)
 
 ### Milestone 4: Personalized Recommendations — PLANNED
@@ -74,12 +74,12 @@ Users receive book recommendations based on their ratings.
 
 ### Milestone 5: Local & LAN Deployment — PLANNED
 
-Application deployed as a self-contained Docker Compose stack, accessible on the local network.
+Application deployed as a self-contained Podman Compose stack, accessible on the local network.
 
 **Sub-milestones:**
 
 #### 5a: Local Development Stack
-- Docker Compose starts DB + backend + scraper with health checks and proper startup ordering
+- Podman Compose starts DB + backend + scraper with health checks and proper startup ordering
 - Backend has `/health` endpoint
 - `.env.example` documents all required variables
 - Frontend runs via Vite dev server (existing workflow preserved)
@@ -120,7 +120,7 @@ Scraper ─────────────┐
 **Key dependency chains:**
 - Frontend Phase 3 → Backend Phase 3 (recommendations endpoint)
 - Backend Phase 3 → Pipeline Phase 4 (trained recommender model)
-- Pipeline Phase 3 (embeddings) → Pipeline Phase 2 (Docker deployment for sentence-transformers)
+- Pipeline Phase 3 (embeddings) → Pipeline Phase 2 (Podman deployment for sentence-transformers)
 - Pipeline Phase 2 → Pipeline Phase 1 completion (all assets, schedule)
 
 ## Detailed Roadmaps
