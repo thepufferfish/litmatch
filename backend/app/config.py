@@ -12,9 +12,9 @@ DATABASE_URL = os.environ.get("DATABASE_URL")
 if not DATABASE_URL:
     raise RuntimeError("DATABASE_URL environment variable must be set")
 
-CORS_ORIGINS = os.environ.get("CORS_ORIGINS", "http://localhost:5173").split(",")
+CORS_ORIGINS = os.environ.get("CORS_ORIGINS", "http://localhost:5173,http://localhost:8080").split(",")
 
-REFRESH_COOKIE_PATH = os.environ.get("REFRESH_COOKIE_PATH", "/auth/refresh")
+REFRESH_COOKIE_PATH = os.environ.get("REFRESH_COOKIE_PATH", "/api/auth/refresh")
 
 # Cookie security: default to True (secure by default), set to false only for local dev
 COOKIE_SECURE = os.environ.get("COOKIE_SECURE", "true").lower() == "true"
