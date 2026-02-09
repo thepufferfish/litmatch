@@ -1,7 +1,9 @@
 import re
 from typing import Generic, TypeVar
 
+from pgvector.sqlalchemy import Vector
 from pydantic import BaseModel, field_validator
+from sqlalchemy import Column
 from sqlmodel import Field, Relationship, SQLModel
 from datetime import date, datetime
 
@@ -129,6 +131,10 @@ class Review(SQLModel, table=True):
     rating: int
     review: str
     url: str | None = Field(default=None, unique=True)
+    embedding: list[float] | None = Field(
+        default=None,
+        sa_column=Column(Vector(384)),
+    )
 
     book: Book = Relationship(back_populates='reviews')
     critic: Critic | None = Relationship(back_populates='reviews')

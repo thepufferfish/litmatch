@@ -8,9 +8,14 @@ import dagster as dg
 etl_pipeline = dg.define_asset_job(
     name="etl_pipeline",
     selection=dg.AssetSelection.assets(
-        "raw_books", "validated_books", "validation_errors", "cleaned_books", "load_books"
+        "raw_books",
+        "validated_books",
+        "validation_errors",
+        "cleaned_books",
+        "load_books",
+        "review_embeddings",
     ),
-    description="Full ETL pipeline: extract, validate, transform, and load books.",
+    description="Full ETL pipeline: extract, validate, transform, load books, and generate embeddings.",
 )
 
 crawl_and_load = dg.define_asset_job(
@@ -22,9 +27,10 @@ crawl_and_load = dg.define_asset_job(
         "validation_errors",
         "cleaned_books",
         "load_books",
+        "review_embeddings",
     ),
     description=(
         "Full crawl-and-load pipeline: trigger Scrapyd crawl, "
-        "then extract, validate, transform, and load books."
+        "then extract, validate, transform, load books, and generate embeddings."
     ),
 )

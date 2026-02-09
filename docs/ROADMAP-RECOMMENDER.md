@@ -2,7 +2,7 @@
 
 ## 1. Executive Summary
 
-This document specifies the architecture for LitMatch's embedding-based recommendation system. The system creates semantic embeddings from critic review text using sentence-transformers, computes per-book embeddings by averaging review embeddings, builds per-user taste profiles by rating-weighted averaging of book embeddings, and serves recommendations via pgvector nearest-neighbor search, separated by fiction and non-fiction.
+This document specifies the architecture for LitMatch's embedding-based recommendation system. The system creates semantic embeddings from critic review text using sentence-transformers, computes per-book embeddings by averaging review embeddings, builds per-user taste profiles by signed-weight averaging of book embeddings (weight = rating - 2, so low ratings repel and high ratings attract), and serves recommendations via pgvector nearest-neighbor search, separated by fiction and non-fiction.
 
 This replaces the standalone surprise-based SVD prototype in `recommender/recommender.py` with a fully integrated, production-ready pipeline spanning Dagster assets, PostgreSQL storage, FastAPI endpoints, and React frontend components.
 
@@ -123,27 +123,38 @@ CREATE INDEX ON review_embedding USING hnsw (embedding vector_cosine_ops)
 
 **Status**: Accepted
 
-### ADR-008: User Embedding via Rating-Weighted Average
+### ADR-008: User Embedding via Signed-Weight Average
 
-**Context**: Need to represent a user's taste as a single vector for nearest-neighbor search. The specification defines weight as rating value (so 3 stars = weight 3, 5 stars = weight 5, 1 star = weight 1).
+**Context**: Need to represent a user's taste as a single vector for nearest-neighbor search.
 
 **Decision**: Compute user embedding as:
 
 ```
-user_embedding = sum(rating_i * book_embedding_i) / sum(rating_i)
+weight_i = rating_i - 2
+user_embedding = sum(weight_i * book_embedding_i) / sum(|weight_i|)
 ```
 
-This is a rating-weighted centroid. A 5-star book contributes 5x more than a 1-star book to the user's taste vector.
+This is a signed-weight centroid. Ratings map to weights as follows:
+
+| Rating | Weight | Effect |
+|--------|--------|--------|
+| 1 star | -1 | Repels (pushes away from this book) |
+| 2 stars | 0 | Neutral (ignored) |
+| 3 stars | +1 | Mild attract |
+| 4 stars | +2 | Attract |
+| 5 stars | +3 | Strong attract |
+
+Dividing by the sum of absolute weights keeps the embedding properly normalized regardless of the mix of positive and negative ratings.
 
 **Trade-off analysis**:
 
 | Approach | Pros | Cons |
 |----------|------|------|
-| Rating as weight (specified) | Simple, intuitive, "more of what you like" | Does not repel from disliked books |
-| Rating - 3 (signed weight) | Pushes away from disliked books | User with only 1-2 ratings may get unstable vectors. Requires at least one positive-weighted rating. |
+| Signed weight (rating - 2) | Repels from disliked books, preserves granularity, leverages negative signal | Requires at least one non-neutral rating. Users who rate everything 2 stars produce no signal. |
+| Rating as weight | Simple, intuitive | Does not repel from disliked books; a 1-star book still attracts (weakly) |
 | Binary (liked/disliked threshold) | Simplest | Loses rating granularity |
 
-**Decision**: Implement rating-as-weight per the specification. This is the simplest correct approach and works well when users primarily rate books they liked (the common case in early-stage recommendation systems).
+**Decision**: Implement signed-weight (rating - 2). This leverages the full range of user feedback, including negative signal from low ratings. Books rated 2 stars are neutral (zero weight) and do not contribute to the embedding. The offset of 2 (rather than 3) means a 3-star rating still contributes a mild positive signal, which is appropriate since a user bothering to rate a book 3/5 likely found it somewhat worthwhile.
 
 **Status**: Accepted
 
@@ -591,7 +602,8 @@ interface RecommendationResponse {
      Set strategy = "popular"
 3. Else:
      Fetch book embeddings for rated books
-     Compute user_embedding = weighted_average(book_embeddings, ratings)
+     Compute user_embedding = signed_weight_average(book_embeddings, ratings)
+       where weight_i = rating_i - 2 (ratings of 2 are neutral, <2 repels, >2 attracts)
      Query pgvector: nearest books to user_embedding WHERE book.id NOT IN rated_book_ids
      Split results by is_fiction
      Set strategy = "personalized"
@@ -848,14 +860,21 @@ def compute_user_embedding(
     session: Session,
     user_ratings: list[UserRating],
 ) -> list[float] | None:
-    """Compute a user's taste embedding as a rating-weighted average of book embeddings.
+    """Compute a user's taste embedding as a signed-weight average of book embeddings.
+
+    Weight = rating - 2, so:
+      1 star -> -1 (repels), 2 stars -> 0 (neutral, skipped),
+      3 stars -> +1, 4 stars -> +2, 5 stars -> +3 (attracts).
+
+    Normalizes by sum of absolute weights to keep the embedding unit-scaled.
 
     Args:
         session: Active database session.
         user_ratings: The user's ratings with book_id and rating fields.
 
     Returns:
-        384-dim embedding vector, or None if no rated books have embeddings.
+        384-dim embedding vector, or None if no rated books have embeddings
+        or all ratings are neutral (2 stars).
     """
     book_ids = [r.book_id for r in user_ratings]
     rating_map = {r.book_id: r.rating for r in user_ratings}
@@ -868,17 +887,19 @@ def compute_user_embedding(
         return None
 
     weighted_sum = np.zeros(384)
-    weight_total = 0.0
+    abs_weight_total = 0.0
 
     for book in books:
-        weight = float(rating_map[book.id])
+        weight = float(rating_map[book.id]) - 2.0
+        if weight == 0:
+            continue  # 2-star ratings are neutral
         weighted_sum += weight * np.array(book.embedding)
-        weight_total += weight
+        abs_weight_total += abs(weight)
 
-    if weight_total == 0:
+    if abs_weight_total == 0:
         return None
 
-    return (weighted_sum / weight_total).tolist()
+    return (weighted_sum / abs_weight_total).tolist()
 
 
 def find_nearest_books(
@@ -1144,7 +1165,7 @@ export function useRecommendations(limit = 10) {
 | Test File | What It Tests |
 |-----------|---------------|
 | `tests/dagster/test_embedding.py` | EmbeddingModelResource (mocked model), review_embeddings asset logic, book_embeddings averaging logic, incremental behavior (skip already-embedded) |
-| `backend/tests/test_recommendations.py` | `compute_user_embedding()` with various rating distributions, `find_nearest_books()` with fiction/nonfiction filters, fallback logic when < MIN_RATINGS, edge cases (no embeddings, no rated books) |
+| `backend/tests/test_recommendations.py` | `compute_user_embedding()` with various rating distributions (verifying signed-weight: negative ratings repel, neutral ratings ignored, positive ratings attract), `find_nearest_books()` with fiction/nonfiction filters, fallback logic when < MIN_RATINGS, edge cases (no embeddings, no rated books, all-neutral ratings) |
 
 ### Integration Tests
 
@@ -1288,7 +1309,7 @@ These should be resolved before or during implementation:
 
 4. **What is the minimum number of embedded reviews a book needs to have a meaningful embedding?** A book with 1 review gets that review's embedding directly. A book with 10 reviews gets a richer average. Recommend: require at least 1 review (no minimum threshold beyond existence).
 
-5. **Should negative ratings (1-2 stars) reduce a book's contribution to the user embedding, or should they be excluded entirely?** The current design uses rating-as-weight, so a 1-star rating still contributes (weakly) in the "direction" of that book. An alternative is to exclude ratings below 3. Recommend: start with the specified approach (rating-as-weight) and iterate based on recommendation quality.
+5. ~~**Should negative ratings (1-2 stars) reduce a book's contribution to the user embedding, or should they be excluded entirely?**~~ **Resolved**: The signed-weight approach (rating - 2) handles this naturally. A 1-star rating contributes weight -1, actively repelling the user embedding from that book's direction. A 2-star rating is neutral (weight 0) and ignored. Ratings of 3+ attract.
 
 ---
 

@@ -94,6 +94,40 @@ class TestRawBooksStillFunctional:
         assert len(output) == 2
 
 
+class TestReviewEmbeddingsInJobs:
+    """[HIGH-3] Tests that review_embeddings is included in job definitions.
+
+    The review_embeddings asset must be part of both etl_pipeline and
+    crawl_and_load jobs so embeddings are generated automatically as
+    part of the standard pipeline runs.
+    """
+
+    def test_etl_pipeline_includes_review_embeddings(self) -> None:
+        """etl_pipeline job selection must include review_embeddings."""
+        from litmatch.defs.jobs import etl_pipeline
+
+        selection_str = str(etl_pipeline.selection)
+        assert "review_embeddings" in selection_str, (
+            "etl_pipeline must include review_embeddings in its asset selection"
+        )
+
+    def test_crawl_and_load_includes_review_embeddings(self) -> None:
+        """crawl_and_load job selection must include review_embeddings."""
+        from litmatch.defs.jobs import crawl_and_load
+
+        selection_str = str(crawl_and_load.selection)
+        assert "review_embeddings" in selection_str, (
+            "crawl_and_load must include review_embeddings in its asset selection"
+        )
+
+    def test_review_embeddings_after_load_books_in_etl(self) -> None:
+        """review_embeddings depends on load_books in the etl_pipeline selection."""
+        from litmatch.defs.assets.embedding import review_embeddings
+
+        dep_keys = review_embeddings.asset_deps[review_embeddings.key]
+        assert dg.AssetKey("load_books") in dep_keys
+
+
 class TestEtlPipelineJobUnchanged:
     """Verify that the etl_pipeline job (ETL-only, no crawl) still works.
 

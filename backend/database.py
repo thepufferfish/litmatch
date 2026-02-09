@@ -16,6 +16,10 @@ def init_db() -> None:
         SQLModel.metadata.create_all(engine)
         with Session(engine) as session:
             session.exec(text("CREATE EXTENSION IF NOT EXISTS vector"))
+            session.exec(text(
+                "ALTER TABLE review "
+                "ADD COLUMN IF NOT EXISTS embedding vector(384)"
+            ))
             session.commit()
     finally:
         engine.dispose()
