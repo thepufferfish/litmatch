@@ -4,7 +4,6 @@ from typing import Generic, TypeVar
 from pydantic import BaseModel, field_validator
 from sqlmodel import Field, Relationship, SQLModel
 from datetime import date, datetime
-from pgvector.sqlalchemy import Vector
 
 T = TypeVar("T")
 
