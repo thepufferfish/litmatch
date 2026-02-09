@@ -38,13 +38,11 @@ cd frontend && npm install && cd ..
 
 ### 2. Configure environment
 
-Create a `.env` file in the project root:
+Copy `.env.example` to `.env` and adjust values:
 
-```
-POSTGRES_DB=bookdb
-POSTGRES_USER=bookuser
-POSTGRES_PASSWORD=bookpassword
-DATABASE_URL=postgresql://bookuser:bookpassword@localhost:5432/bookdb
+```bash
+cp .env.example .env
+# Edit .env: set SECRET_KEY (openssl rand -hex 32) and POSTGRES_PASSWORD
 ```
 
 ### 3. Start services
@@ -74,8 +72,11 @@ podman compose up db -d
 # Initialize schema (first time or after model changes)
 python -m backend.database
 
-# Backend API
+# Backend API (containerized)
 podman compose up backend -d
+
+# Backend API (local dev, with auto-reload)
+uv run uvicorn backend.app.main:app --reload --port 8000
 
 # Frontend dev server (proxies /api to backend)
 cd frontend && npm run dev
@@ -84,17 +85,23 @@ cd frontend && npm run dev
 podman compose up dagster-code dagster-webserver dagster-daemon -d
 
 # Dagster ETL UI (local dev, without containers)
-dg dev
+uv run dg dev
 ```
 
 ### Testing
 
 ```bash
-# Backend
-uv run pytest
+# Unit tests (Dagster pipeline)
+make test-unit
 
-# Frontend
+# Integration tests (starts/stops compose stack)
+make test-integration
+
+# Frontend tests
 cd frontend && npm test
+
+# Coverage report
+make test-coverage
 ```
 
 ### Service ports
@@ -102,20 +109,25 @@ cd frontend && npm test
 | Service | Port |
 |---------|------|
 | PostgreSQL | 5432 |
-| FastAPI Backend | 8000 |
+| FastAPI Backend | 8000 (compose) / 80 (Makefile) |
 | Scrapyd | 6800 |
+| Dagster Code Server | 4000 |
 | Dagster UI | 3000 |
+| Frontend (nginx) | 8080 |
 | Vite Dev Server | 5173 |
 
 ## API Endpoints
 
 | Method | Path | Description |
 |--------|------|-------------|
+| GET | `/health` | Health check (verifies database connectivity) |
 | POST | `/auth/register` | Create a new user |
 | POST | `/auth/login` | Authenticate a user |
+| POST | `/auth/refresh` | Refresh JWT access token (uses httpOnly cookie) |
+| POST | `/auth/logout` | Clear refresh token cookie |
 | GET | `/books/` | List books (paginated, filterable by genre/user) |
 | GET | `/books/search` | Search books by title or author |
-| GET | `/books/{id}` | Get a single book |
+| GET | `/books/{book_id}` | Get a single book with details |
 | GET | `/reviews/{book_id}` | Get reviews for a book |
 | GET | `/genres/` | List all genres |
 | GET | `/ratings/` | Get ratings (filterable by user/book) |
@@ -125,9 +137,9 @@ API documentation is available at http://localhost:8000/docs when the backend is
 
 ## Database Schema
 
-PostgreSQL with pgvector. Key entities defined in `backend/db/models.py`:
+PostgreSQL with pgvector extension. Key entities defined in `backend/db/models.py`:
 
-- **Book** -- title, author, publisher, publish_date, description, url, cover
+- **Book** -- central entity (title, author, publisher, isbn, description, fiction flag)
 - **Author**, **Publisher** -- one-to-many with Book
 - **Genre** -- many-to-many with Book via BookGenreLink
 - **Review** -- linked to Book, Critic, and Publication
@@ -138,33 +150,46 @@ PostgreSQL with pgvector. Key entities defined in `backend/db/models.py`:
 ```
 litmatch/
   backend/                # FastAPI REST API
-    app/main.py           #   API endpoints
+    app/
+      main.py             #   API endpoints + CORS + rate limiting
+      auth.py             #   JWT access/refresh token logic
+      config.py           #   Environment variable configuration
+      rate_limit.py       #   slowapi rate limiter setup
     db/models.py          #   SQLModel database models
     database.py           #   DB init + pgvector extension
+    entrypoint.sh         #   Container startup script
     Dockerfile
-    tests/
-  frontend/               # React SPA
+  frontend/               # React SPA (Vite + TypeScript + Tailwind CSS v4)
     src/
       api/client.ts       #   Axios HTTP client
-      components/         #   BookCard, BookGrid, SearchBar, etc.
-      hooks/              #   TanStack React Query hooks
-      pages/              #   BrowsePage, BookDetailPage
+      components/         #   BookCard, BookGrid, SearchBar, StarRating, etc.
+      context/            #   AuthContext (JWT auth)
+      hooks/              #   TanStack React Query hooks (useBooks, useGenres, etc.)
+      pages/              #   BrowsePage, BookDetailPage, LoginPage, RegisterPage
       types/              #   TypeScript type definitions
-      utils/              #   Utility functions + tests
-  recommender/            # SVD collaborative filtering
+      utils/              #   Utility functions (slugify, validation)
+  recommender/            # SVD collaborative filtering (surprise)
   scraper/                # Scrapy project (bookmarks.reviews)
   src/litmatch/           # Dagster ETL pipeline
-    defs/assets.py        #   Asset definitions (extract, load_to_db)
-    defs/resources.py     #   Dagster resources
+    defs/
+      assets/             #   Asset definitions (crawl, extract, validate, transform, load)
+      resources/          #   Dagster resources (database, path, scrapyd)
+      sensors/            #   Dagster sensors (data_freshness, startup_crawl)
+      utils/              #   ETL utilities (db_operations, transforms, validation)
+      jobs.py             #   Job definitions (etl_pipeline, crawl_and_load)
+  tests/
+    dagster/              #   Unit tests for Dagster assets, transforms, validation, sensors
+    integration/          #   Integration tests (require running compose stack)
   compose.yaml            # Podman Compose services
+  compose.test.yaml       # Override for integration tests
   Makefile                # Convenience targets
   pyproject.toml          # Python project config (hatchling)
   dagster.yaml            # Dagster instance config
+  .env.example            # Environment variable template
 ```
 
 ## Further Reading
 
 - [`docs/CONTRIB.md`](docs/CONTRIB.md) -- Development workflow and contributing guide
 - [`docs/RUNBOOK.md`](docs/RUNBOOK.md) -- Deployment, monitoring, and troubleshooting
-- [`SPEC.md`](SPEC.md) -- Frontend implementation spec
-- [`PLAN.md`](PLAN.md) -- Implementation plan with dependency graph
+- [`docs/ROADMAP.md`](docs/ROADMAP.md) -- Project roadmap

@@ -114,10 +114,11 @@ podman compose up dagster-code dagster-webserver dagster-daemon -d
 ### Asset Graph
 
 ```
-raw_books → validate_raw_books → cleaned_books → load_books
-              ↘ validation_errors
+crawl_books → raw_books → validate_raw_books → cleaned_books → load_books
+                            ↘ validation_errors
 ```
 
+- **crawl_books**: Triggers Scrapyd spider and polls for completion (used by `crawl_and_load` job)
 - **raw_books**: Reads and parses `books.jsonl` from the scraper output volume
 - **validate_raw_books**: Validates required fields, splits into valid records + error records
 - **cleaned_books**: Transforms dates, ratings, fiction classification, critic names
