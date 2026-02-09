@@ -43,6 +43,41 @@ from backend.db.models import (
 
 engine = create_engine(DATABASE_URL)
 
+
+def _annotate_books_with_ratings(
+    session: Session, books: list[Book]
+) -> list[BookRead]:
+    """Convert Book ORM objects to BookRead with avg_critic_rating and review_count."""
+    if not books:
+        return []
+
+    book_ids = [b.id for b in books]
+    rating_stmt = (
+        select(
+            Review.book_id,
+            func.avg(Review.rating).label("avg_rating"),
+            func.count(Review.id).label("review_count"),
+        )
+        .where(Review.book_id.in_(book_ids))
+        .group_by(Review.book_id)
+    )
+    rows = session.exec(rating_stmt).all()
+    rating_map: dict[int, tuple[float, int]] = {
+        row.book_id: (round(float(row.avg_rating), 1), row.review_count)
+        for row in rows
+    }
+
+    result = []
+    for book in books:
+        book_read = BookRead.model_validate(book)
+        if book.id in rating_map:
+            avg, count = rating_map[book.id]
+            book_read = book_read.model_copy(
+                update={"avg_critic_rating": avg, "review_count": count}
+            )
+        result.append(book_read)
+    return result
+
 def _hash_password(password: str) -> str:
     """Hash a password using bcrypt."""
     return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
@@ -254,7 +289,8 @@ def read_books(
     total = session.exec(count_stmt).one()
     offset = (page - 1) * limit
     books = session.exec(stmt.offset(offset).limit(limit)).all()
-    return PaginatedResponse(items=books, total=total, page=page, limit=limit)
+    items = _annotate_books_with_ratings(session, list(books))
+    return PaginatedResponse(items=items, total=total, page=page, limit=limit)
 
 
 def escape_like(value: str) -> str:
@@ -302,7 +338,8 @@ def search_books(
     total = session.exec(count_stmt).one()
     offset = (page - 1) * limit
     books = session.exec(stmt.offset(offset).limit(limit)).all()
-    return PaginatedResponse(items=books, total=total, page=page, limit=limit)
+    items = _annotate_books_with_ratings(session, list(books))
+    return PaginatedResponse(items=items, total=total, page=page, limit=limit)
 
 
 @app.get("/books/{book_id}", response_model=BookRead)
@@ -319,7 +356,7 @@ def read_book(*, session: Session = Depends(get_session), book_id: int):
     book = session.exec(stmt).first()
     if not book:
         raise HTTPException(status_code=404, detail="Book not found")
-    return book
+    return _annotate_books_with_ratings(session, [book])[0]
 
 
 # ---------------------------------------------------------------------------

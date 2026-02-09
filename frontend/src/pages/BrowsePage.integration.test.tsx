@@ -28,6 +28,8 @@ const mockBooks: Book[] = [
     author: { id: 1, name: "F. Scott Fitzgerald" },
     publisher: { id: 1, name: "Scribner" },
     genres: [{ id: 1, name: "Fiction" }],
+    avg_critic_rating: 3.5,
+    review_count: 10,
   },
   {
     id: 2,
@@ -41,6 +43,8 @@ const mockBooks: Book[] = [
     author: { id: 2, name: "George Orwell" },
     publisher: { id: 2, name: "Secker & Warburg" },
     genres: [{ id: 1, name: "Fiction" }, { id: 3, name: "Dystopia" }],
+    avg_critic_rating: 3.8,
+    review_count: 15,
   },
   {
     id: 3,
@@ -54,6 +58,8 @@ const mockBooks: Book[] = [
     author: { id: 3, name: "Harper Lee" },
     publisher: { id: 3, name: "J. B. Lippincott & Co." },
     genres: [{ id: 1, name: "Fiction" }],
+    avg_critic_rating: null,
+    review_count: 0,
   },
 ];
 

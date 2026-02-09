@@ -45,6 +45,8 @@ export interface Book {
   author: Author | null;
   publisher: Publisher | null;
   genres: Genre[];
+  avg_critic_rating: number | null;
+  review_count: number;
 }
 
 export interface UserRating {

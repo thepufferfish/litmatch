@@ -30,6 +30,8 @@ const mockBook: Book = {
   author: { id: 1, name: "Test Author" },
   publisher: { id: 1, name: "Test Publisher" },
   genres: [{ id: 1, name: "Fiction" }],
+  avg_critic_rating: 3.0,
+  review_count: 5,
 };
 
 const validResponse: PaginatedResponse<Book> = {

@@ -83,6 +83,8 @@ class BookRead(BaseModel):
     author: AuthorRead | None = None
     publisher: PublisherRead | None = None
     genres: list[GenreRead] = []
+    avg_critic_rating: float | None = None
+    review_count: int = 0
     model_config = {"from_attributes": True}
 
 

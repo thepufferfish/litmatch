@@ -1,5 +1,6 @@
 import { Link } from "react-router";
 import type { Book } from "@/types";
+import { CriticRatingBadge } from "@/components/CriticRatingBadge";
 
 interface BookCardProps {
   book: Book;
@@ -61,6 +62,15 @@ export function BookCard({ book }: BookCardProps) {
         >
           {book.author?.name ?? "Unknown Author"}
         </p>
+
+        {book.avg_critic_rating !== null && (
+          <div className="mt-2">
+            <CriticRatingBadge
+              avgRating={book.avg_critic_rating}
+              reviewCount={book.review_count}
+            />
+          </div>
+        )}
 
         {/* Genre tags */}
         {displayedGenres.length > 0 && (

@@ -3,6 +3,7 @@ import { useBook } from "@/hooks/useBooks";
 import { useReviews } from "@/hooks/useReviews";
 import { useUserRating, useSubmitRating } from "@/hooks/useRatings";
 import { useAuth } from "@/context/AuthContext";
+import { CriticRatingBadge } from "@/components/CriticRatingBadge";
 import { ReviewList } from "@/components/ReviewList";
 import { StarRating } from "@/components/StarRating";
 import { SkeletonDetail } from "@/components/Skeleton";
@@ -212,6 +213,15 @@ export function BookDetailPage() {
 
           {/* Reviews section */}
           <div className="mt-10">
+            {book.avg_critic_rating !== null && (
+              <div className="mb-4">
+                <CriticRatingBadge
+                  avgRating={book.avg_critic_rating}
+                  reviewCount={book.review_count}
+                  showCount
+                />
+              </div>
+            )}
             <h2 className="font-serif text-xl text-ink mb-4">
               Critic Reviews
               {reviews && reviews.length > 0 && (

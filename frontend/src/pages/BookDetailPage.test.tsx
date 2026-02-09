@@ -19,6 +19,8 @@ const mockBook: Book = {
   author: { id: 1, name: "Jane Author" },
   publisher: { id: 1, name: "Test Press" },
   genres: [{ id: 1, name: "Fiction" }],
+  avg_critic_rating: 3.2,
+  review_count: 8,
 };
 
 const mockRating: UserRating = {
@@ -509,5 +511,51 @@ describe("BookDetailPage - Rating Section", () => {
     renderWithProviders();
 
     expect(mockUseUserRating).toHaveBeenCalledWith(42, undefined);
+  });
+});
+
+describe("BookDetailPage - Average Critic Rating", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("shows critic rating badge when avg_critic_rating is present", () => {
+    setupDefaultMocks();
+
+    renderWithProviders();
+
+    expect(screen.getByTestId("critic-rating-badge")).toBeInTheDocument();
+    expect(screen.getByText(/3\.2/)).toBeInTheDocument();
+  });
+
+  it("shows review count text on detail page", () => {
+    setupDefaultMocks();
+
+    renderWithProviders();
+
+    expect(screen.getByText("from 8 reviews")).toBeInTheDocument();
+  });
+
+  it("does not show critic rating badge when avg_critic_rating is null", () => {
+    mockUseBook.mockReturnValue({
+      data: { ...mockBook, avg_critic_rating: null, review_count: 0 },
+      isLoading: false,
+      error: null,
+    });
+    mockUseReviews.mockReturnValue({ data: [], isLoading: false });
+    mockUseAuth.mockReturnValue({
+      user: null,
+      isAuthenticated: false,
+      isLoading: false,
+      login: vi.fn(),
+      register: vi.fn(),
+      logout: vi.fn(),
+      getAccessToken: vi.fn(),
+    });
+    mockUseUserRating.mockReturnValue({ data: null, isLoading: false });
+
+    renderWithProviders();
+
+    expect(screen.queryByTestId("critic-rating-badge")).not.toBeInTheDocument();
   });
 });
