@@ -166,6 +166,36 @@ describe("useBooks", () => {
       params: { page: 1, limit: 24, genre: 5 },
     });
   });
+
+  it("includes sort param when provided", async () => {
+    mockGet.mockResolvedValue({ data: validResponse });
+
+    const { result } = renderHook(
+      () => useBooks({ page: 1, sort: "rating_desc" }),
+      { wrapper: createWrapper() }
+    );
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    expect(mockGet).toHaveBeenCalledWith("/books/", {
+      params: { page: 1, limit: 24, sort: "rating_desc" },
+    });
+  });
+
+  it("excludes sort param when undefined", async () => {
+    mockGet.mockResolvedValue({ data: validResponse });
+
+    const { result } = renderHook(
+      () => useBooks({ page: 1 }),
+      { wrapper: createWrapper() }
+    );
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    expect(mockGet).toHaveBeenCalledWith("/books/", {
+      params: { page: 1, limit: 24 },
+    });
+  });
 });
 
 describe("useSearchBooks", () => {

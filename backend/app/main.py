@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Literal
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -7,6 +8,7 @@ import bcrypt
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from sqlalchemy.orm import selectinload
+from sqlalchemy.sql import expression
 from sqlmodel import Session, create_engine, func, or_, select, case, text
 
 from backend.app.auth import (
@@ -42,6 +44,47 @@ from backend.db.models import (
 )
 
 engine = create_engine(DATABASE_URL)
+
+# ---------------------------------------------------------------------------
+# Sorting helpers
+# ---------------------------------------------------------------------------
+
+SortOption = Literal[
+    "title_asc",
+    "title_desc",
+    "date_desc",
+    "date_asc",
+    "rating_desc",
+    "reviews_desc",
+]
+
+
+def _build_rating_subquery():
+    """Build a subquery that computes avg rating and review count per book."""
+    return (
+        select(
+            Review.book_id,
+            func.avg(Review.rating).label("avg_rating"),
+            func.count(Review.id).label("review_count"),
+        )
+        .group_by(Review.book_id)
+        .subquery()
+    )
+
+
+def _apply_sort(stmt: expression.Select, sort: SortOption | None, rating_sub) -> expression.Select:
+    """Apply an ORDER BY clause to the statement based on the sort option."""
+    sort_map = {
+        "title_asc": lambda: [Book.title.asc()],
+        "title_desc": lambda: [Book.title.desc()],
+        "date_desc": lambda: [Book.publish_date.desc().nulls_last(), Book.title.asc()],
+        "date_asc": lambda: [Book.publish_date.asc().nulls_last(), Book.title.asc()],
+        "rating_desc": lambda: [rating_sub.c.avg_rating.desc().nulls_last(), Book.title.asc()],
+        "reviews_desc": lambda: [func.coalesce(rating_sub.c.review_count, 0).desc(), Book.title.asc()],
+    }
+    if sort and sort in sort_map:
+        return stmt.order_by(*sort_map[sort]())
+    return stmt
 
 
 def _annotate_books_with_ratings(
@@ -273,11 +316,18 @@ def read_books(
     limit: int = Query(default=24, ge=1, le=100),
     genre: int | None = None,
     user_id: int | None = None,
+    sort: SortOption | None = Query(default=None),
 ):
-    stmt = select(Book).options(
-        selectinload(Book.author),
-        selectinload(Book.publisher),
-        selectinload(Book.genres),
+    rating_sub = _build_rating_subquery()
+
+    stmt = (
+        select(Book)
+        .options(
+            selectinload(Book.author),
+            selectinload(Book.publisher),
+            selectinload(Book.genres),
+        )
+        .outerjoin(rating_sub, Book.id == rating_sub.c.book_id)
     )
     count_stmt = select(func.count(Book.id))
     if genre:
@@ -286,6 +336,9 @@ def read_books(
     if user_id:
         stmt = stmt.join(Book.user_ratings).where(UserRating.user_id == user_id)
         count_stmt = count_stmt.join(Book.user_ratings).where(UserRating.user_id == user_id)
+
+    stmt = _apply_sort(stmt, sort, rating_sub)
+
     total = session.exec(count_stmt).one()
     offset = (page - 1) * limit
     books = session.exec(stmt.offset(offset).limit(limit)).all()
@@ -305,6 +358,7 @@ def search_books(
     q: str = Query(default="", max_length=200),
     page: int = Query(default=1, ge=1),
     limit: int = Query(default=24, ge=1, le=100),
+    sort: SortOption | None = Query(default=None),
 ):
     if len(q.strip()) < 2:
         raise HTTPException(
@@ -319,6 +373,9 @@ def search_books(
         (Author.name.ilike(pattern), 2),
         else_=3,
     )
+
+    rating_sub = _build_rating_subquery()
+
     stmt = (
         select(Book)
         .options(
@@ -327,9 +384,15 @@ def search_books(
             selectinload(Book.genres),
         )
         .outerjoin(Author, Book.author_id == Author.id)
+        .outerjoin(rating_sub, Book.id == rating_sub.c.book_id)
         .where(filter_clause)
-        .order_by(rank, Book.title)
     )
+
+    if sort:
+        stmt = _apply_sort(stmt, sort, rating_sub)
+    else:
+        stmt = stmt.order_by(rank, Book.title)
+
     count_stmt = (
         select(func.count(Book.id))
         .outerjoin(Author, Book.author_id == Author.id)

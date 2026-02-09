@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import api from "@/api/client";
-import type { Book, PaginatedResponse } from "@/types";
+import type { Book, BookSortOption, PaginatedResponse } from "@/types";
 
 /**
  * Normalize a paginated API response to ensure all required fields
@@ -25,14 +25,16 @@ interface UseBooksParams {
   page?: number;
   limit?: number;
   genre?: number;
+  sort?: BookSortOption;
 }
 
-export function useBooks({ page = 1, limit = 24, genre }: UseBooksParams = {}) {
+export function useBooks({ page = 1, limit = 24, genre, sort }: UseBooksParams = {}) {
   return useQuery({
-    queryKey: ["books", { page, limit, genre }],
+    queryKey: ["books", { page, limit, genre, sort }],
     queryFn: async () => {
-      const params: Record<string, number> = { page, limit };
+      const params: Record<string, string | number> = { page, limit };
       if (genre) params.genre = genre;
+      if (sort) params.sort = sort;
       const { data } = await api.get<PaginatedResponse<Book>>("/books/", {
         params,
       });
@@ -58,21 +60,23 @@ interface UseSearchBooksParams {
   q: string;
   page?: number;
   limit?: number;
+  sort?: BookSortOption;
 }
 
 export function useSearchBooks({
   q,
   page = 1,
   limit = 24,
+  sort,
 }: UseSearchBooksParams) {
   return useQuery({
-    queryKey: ["books", { search: q, page, limit }],
+    queryKey: ["books", { search: q, page, limit, sort }],
     queryFn: async () => {
+      const params: Record<string, string | number> = { q, page, limit };
+      if (sort) params.sort = sort;
       const { data } = await api.get<PaginatedResponse<Book>>(
         "/books/search",
-        {
-          params: { q, page, limit },
-        }
+        { params }
       );
       return normalizePaginatedResponse(data, limit);
     },

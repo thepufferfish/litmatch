@@ -114,6 +114,35 @@ vi.mock("@/components/SearchBar", () => ({
   ),
 }));
 
+vi.mock("@/components/SortSelect", () => ({
+  SORT_OPTIONS: [
+    { value: "rating_desc", label: "Highest Rated" },
+    { value: "reviews_desc", label: "Most Reviewed" },
+    { value: "date_desc", label: "Newest First" },
+    { value: "date_asc", label: "Oldest First" },
+    { value: "title_asc", label: "Title A\u2013Z" },
+    { value: "title_desc", label: "Title Z\u2013A" },
+  ],
+  SortSelect: ({
+    value,
+    onChange,
+  }: {
+    value?: string;
+    onChange: (v: string | undefined) => void;
+  }) => (
+    <select
+      data-testid="sort-select"
+      value={value ?? ""}
+      onChange={(e) => onChange(e.target.value || undefined)}
+    >
+      <option value="">Default</option>
+      <option value="rating_desc">Highest Rated</option>
+      <option value="reviews_desc">Most Reviewed</option>
+      <option value="title_asc">Title A-Z</option>
+    </select>
+  ),
+}));
+
 vi.mock("@/components/Pagination", () => ({
   Pagination: ({
     currentPage,
@@ -620,6 +649,116 @@ describe("BrowsePage", () => {
 
       const grid = screen.getByTestId("book-grid");
       expect(grid).toHaveAttribute("data-books-type", "array");
+    });
+  });
+
+  describe("sorting", () => {
+    it("renders sort select component", () => {
+      setupDefaultMocks();
+      renderBrowsePage();
+
+      expect(screen.getByTestId("sort-select")).toBeInTheDocument();
+    });
+
+    it("passes sort param from URL to useBooks", () => {
+      setupDefaultMocks();
+      renderBrowsePage("/?sort=rating_desc");
+
+      expect(mockUseBooks).toHaveBeenCalledWith(
+        expect.objectContaining({ sort: "rating_desc" })
+      );
+    });
+
+    it("passes undefined sort when no sort param in URL", () => {
+      setupDefaultMocks();
+      renderBrowsePage("/");
+
+      expect(mockUseBooks).toHaveBeenCalledWith(
+        expect.objectContaining({ sort: undefined })
+      );
+    });
+
+    it("passes sort param to useSearchBooks when searching", () => {
+      setupDefaultMocks({
+        searchData: {
+          items: mockBooks,
+          total: 2,
+          page: 1,
+          limit: 24,
+        },
+      });
+      renderBrowsePage("/?search=gatsby&sort=title_asc");
+
+      expect(mockUseSearchBooks).toHaveBeenCalledWith(
+        expect.objectContaining({ sort: "title_asc" })
+      );
+    });
+
+    it("handleSortChange resets page to 1", async () => {
+      const user = (await import("@testing-library/user-event")).default.setup();
+
+      setupDefaultMocks({
+        booksData: {
+          items: mockBooks,
+          total: 100,
+          page: 2,
+          limit: 24,
+        },
+      });
+
+      renderBrowsePage("/?page=2");
+
+      const sortSelect = screen.getByTestId("sort-select");
+      await user.selectOptions(sortSelect, "rating_desc");
+
+      // After changing sort, useBooks should be called with page 1
+      // (page param is removed from URL, so it defaults to 1)
+      const lastCall = mockUseBooks.mock.calls[mockUseBooks.mock.calls.length - 1]!;
+      expect(lastCall[0]).toMatchObject({ page: 1 });
+    });
+
+    it("sort param is preserved when changing pages", async () => {
+      const user = (await import("@testing-library/user-event")).default.setup();
+
+      setupDefaultMocks({
+        booksData: {
+          items: mockBooks,
+          total: 100,
+          page: 1,
+          limit: 24,
+        },
+      });
+
+      renderBrowsePage("/?sort=rating_desc");
+
+      const nextBtn = screen.getByTestId("page-next");
+      await user.click(nextBtn);
+
+      // After page change, sort should still be passed
+      const lastCall = mockUseBooks.mock.calls[mockUseBooks.mock.calls.length - 1]!;
+      expect(lastCall[0]).toMatchObject({ sort: "rating_desc" });
+    });
+
+    it("sort param is preserved when clearing search", async () => {
+      const user = (await import("@testing-library/user-event")).default.setup();
+
+      setupDefaultMocks({
+        searchData: {
+          items: [],
+          total: 0,
+          page: 1,
+          limit: 24,
+        },
+      });
+
+      renderBrowsePage("/?search=nonexistent&sort=title_asc");
+
+      const clearBtn = screen.getByTestId("clear-search");
+      await user.click(clearBtn);
+
+      // After clearing search, sort should still be passed to useBooks
+      const lastCall = mockUseBooks.mock.calls[mockUseBooks.mock.calls.length - 1]!;
+      expect(lastCall[0]).toMatchObject({ sort: "title_asc" });
     });
   });
 

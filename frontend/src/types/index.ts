@@ -90,3 +90,11 @@ export interface RatingCreate {
   book_id: number;
   rating: number;
 }
+
+export type BookSortOption =
+  | "title_asc"
+  | "title_desc"
+  | "date_desc"
+  | "date_asc"
+  | "rating_desc"
+  | "reviews_desc";

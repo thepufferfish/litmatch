@@ -10,8 +10,13 @@ import { useGenres } from "@/hooks/useGenres";
 import { BookGrid } from "@/components/BookGrid";
 import { GenreSidebar } from "@/components/GenreSidebar";
 import { SearchBar } from "@/components/SearchBar";
+import { SortSelect } from "@/components/SortSelect";
 import { Pagination } from "@/components/Pagination";
 import { slugify } from "@/utils/slugify";
+import type { BookSortOption } from "@/types";
+import { SORT_OPTIONS } from "@/components/SortSelect";
+
+const VALID_SORTS = new Set<string>(SORT_OPTIONS.map((o) => o.value));
 
 export function BrowsePage() {
   const { slug: genreSlug } = useParams<{ slug: string }>();
@@ -29,6 +34,10 @@ export function BrowsePage() {
   const genreId = resolvedGenre?.id;
   const page = parseInt(searchParams.get("page") ?? "1", 10) || 1;
   const searchQuery = searchParams.get("search") ?? "";
+  const rawSort = searchParams.get("sort");
+  const sort = rawSort && VALID_SORTS.has(rawSort)
+    ? (rawSort as BookSortOption)
+    : undefined;
 
   // Determine which query to use
   const isSearching = searchQuery.length >= 2;
@@ -36,11 +45,13 @@ export function BrowsePage() {
   const booksQuery = useBooks({
     page,
     genre: genreId,
+    sort,
   });
 
   const searchBooksQuery = useSearchBooks({
     q: searchQuery,
     page,
+    sort,
   });
 
   const activeQuery = isSearching ? searchBooksQuery : booksQuery;
@@ -82,13 +93,28 @@ export function BrowsePage() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
+  const handleSortChange = (newSort: BookSortOption | undefined) => {
+    const params = new URLSearchParams(searchParams);
+    if (newSort) {
+      params.set("sort", newSort);
+    } else {
+      params.delete("sort");
+    }
+    params.delete("page");
+    setSearchParams(params);
+  };
+
   const handleSearch = (query: string) => {
-    // When searching, reset to page 1 and clear genre
+    // When searching, reset to page 1 and clear genre, preserve sort
     if (genreSlug) {
-      navigate(`/?search=${encodeURIComponent(query)}`);
+      const params = new URLSearchParams();
+      params.set("search", query);
+      if (sort) params.set("sort", sort);
+      navigate(`/?${params.toString()}`);
     } else {
       const params = new URLSearchParams();
       params.set("search", query);
+      if (sort) params.set("sort", sort);
       setSearchParams(params);
     }
   };
@@ -145,13 +171,14 @@ export function BrowsePage() {
       <GenreSidebar activeGenreSlug={genreSlug} />
 
       <main className="flex-1 min-w-0">
-        {/* Search bar */}
-        <div className="mb-8">
+        {/* Search bar + Sort */}
+        <div className="mb-8 flex flex-col sm:flex-row items-start sm:items-center gap-4">
           <SearchBar
             initialValue={searchQuery}
             onSearch={handleSearch}
             onClear={handleClearSearch}
           />
+          <SortSelect value={sort} onChange={handleSortChange} />
         </div>
 
         {/* Active filters indicator */}
