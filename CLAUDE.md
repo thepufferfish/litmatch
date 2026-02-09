@@ -92,6 +92,19 @@ PostgreSQL with pgvector. Key entities defined in `backend/db/models.py`:
 - **`.env`** — PostgreSQL credentials, DATABASE_URL, SECRET_KEY, CORS_ORIGINS, auth cookie config (used by both Makefile and compose). See `.env.example` for all variables.
 - Podman network `litnet` is used for inter-container communication when running via Makefile
 
+## Local Verification Pattern
+
+After making changes, verify locally by running the affected component's dev server. Stop the corresponding container(s) first to avoid port conflicts.
+
+| Component Changed | Stop Containers | Run Locally | Verify |
+|---|---|---|---|
+| **Dagster** (`src/litmatch/`) | `podman compose stop dagster-code dagster-webserver dagster-daemon` | `uv run dg dev` | Asset graph at http://localhost:3000, materialize jobs |
+| **Backend** (`backend/`) | `podman compose stop backend` | `uv run uvicorn backend.app.main:app --reload --port 8000` | `curl http://localhost:8000/health`, test endpoints |
+| **Frontend** (`frontend/`) | `podman compose stop frontend` | `cd frontend && npm run dev` | Browse http://localhost:5173 |
+| **Scraper** (`scraper/`) | `podman compose stop scrapyd` | `cd scraper && uv run scrapy crawl bookmarks -o output/books.jsonl` | Check output file |
+
+**Workflow**: Unit tests first (`make test-unit`), then local dev server, then integration tests (`make test-integration`) for full-stack validation.
+
 ## Test Structure
 
 ```
