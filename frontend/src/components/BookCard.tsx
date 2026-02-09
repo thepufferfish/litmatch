@@ -68,6 +68,7 @@ export function BookCard({ book }: BookCardProps) {
             <CriticRatingBadge
               avgRating={book.avg_critic_rating}
               reviewCount={book.review_count}
+              showCount
             />
           </div>
         )}
