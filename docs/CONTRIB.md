@@ -4,7 +4,7 @@
 
 - Python 3.12+
 - Node.js 18+ and npm
-- Docker and Docker Compose
+- Podman and Podman Compose
 - [uv](https://docs.astral.sh/uv/) (preferred Python package manager)
 
 ## Environment Setup
@@ -46,7 +46,7 @@ cp .env.example .env
 ### 4. Start the database
 
 ```bash
-docker compose up db -d
+podman compose up db -d
 ```
 
 ### 5. Initialize the database schema
@@ -76,13 +76,13 @@ python -m backend.database
 | `npm run test` | Run Vitest test suite (single run) |
 | `npm run test:watch` | Run Vitest in watch mode |
 
-### Docker / Infrastructure
+### Podman / Infrastructure
 
 | Command | Description |
 |---------|-------------|
-| `docker compose up --build -d` | Start all services (db, backend, scrapyd) |
-| `docker compose down` | Stop all services |
-| `docker compose up db -d` | Start only PostgreSQL |
+| `podman compose up --build -d` | Start all services (db, backend, scrapyd) |
+| `podman compose down` | Stop all services |
+| `podman compose up db -d` | Start only PostgreSQL |
 | `make create-db` | Start standalone PostgreSQL container on litnet network |
 | `make start-api` | Build and start FastAPI backend (port 80, standalone) |
 | `make start-backend` | Full standalone backend: DB + schema init + API |
@@ -93,7 +93,7 @@ python -m backend.database
 
 1. Start the database:
    ```bash
-   docker compose up db -d
+   podman compose up db -d
    ```
 
 2. Initialize the schema (first time or after model changes):
@@ -103,7 +103,7 @@ python -m backend.database
 
 3. Start the backend API:
    ```bash
-   docker compose up backend -d
+   podman compose up backend -d
    # Backend available at http://localhost:8000
    ```
 
@@ -120,10 +120,10 @@ python -m backend.database
    # Dagster UI at http://localhost:3000
    ```
 
-### Running with Docker Compose (all services)
+### Running with Podman Compose (all services)
 
 ```bash
-docker compose up --build -d
+podman compose up --build -d
 ```
 
 This starts:
@@ -183,7 +183,7 @@ litmatch/
       assets/           # Dagster asset definitions (extract, transform, load, validate)
       resources/        # Dagster resources (database, path, scrapyd)
       utils/            # ETL utility functions (db_operations, transforms, validation)
-  compose.yaml          # Docker Compose services
+  compose.yaml          # Podman Compose services
   Makefile              # Convenience targets
   pyproject.toml        # Python project config
   dagster.yaml          # Dagster instance config

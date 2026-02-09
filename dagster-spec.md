@@ -11,13 +11,13 @@ This document specifies the architecture, implementation plan, and phased roadma
 1. **Reliability** -- Replace the monolithic, fragile ETL with a modular asset graph that handles errors gracefully and quarantines bad data instead of failing entire runs.
 2. **Observability** -- Every stage of the pipeline produces metadata visible in the Dagster UI: record counts, validation pass/fail rates, load durations, quarantine summaries.
 3. **Orchestration** -- Dagster manages the full lifecycle: triggering the scraper, transforming data, loading to the database, and generating embeddings. Weekly automated runs.
-4. **Deployability** -- The pipeline runs as Docker Compose services (webserver + daemon) alongside the existing database, backend, and scraper containers.
+4. **Deployability** -- The pipeline runs as Podman Compose services (webserver + daemon) alongside the existing database, backend, and scraper containers.
 5. **Testability** -- Unit tests for transformation functions and integration tests for the full asset graph against a test database.
 
 ### Non-Goals (Current Scope)
 
 - CI/CD integration (future)
-- External monitoring or alerting (Dagster UI + Docker logs suffice)
+- External monitoring or alerting (Dagster UI + Podman logs suffice)
 - Recommender model training as a Dagster asset (Phase 4, long-term)
 - Migration to cloud object storage (MinIO/S3) for raw data (future, when needed)
 
@@ -29,7 +29,7 @@ This document specifies the architecture, implementation plan, and phased roadma
 
 | Component | State | Notes |
 |-----------|-------|-------|
-| Scraper (Scrapy + Scrapyd) | **Working** | Containerized, triggered via `curl` to Scrapyd API. Outputs `books.jsonl` to a Docker volume. Supports incremental scraping via sitemap `lastmod` metadata. |
+| Scraper (Scrapy + Scrapyd) | **Working** | Containerized, triggered via `curl` to Scrapyd API. Outputs `books.jsonl` to a Podman volume. Supports incremental scraping via sitemap `lastmod` metadata. |
 | `extract` asset | **Likely functional** | Reads `books.jsonl` from a hardcoded container volume path. Returns `list[dict]`. |
 | `load_to_db` asset | **Unknown** | Monolithic function: iterates all records, does get-or-create for 6 entity types, upserts books, deduplicates reviews. No error handling for bad records. |
 | `raw_data` asset | **Orphaned** | Reads same JSONL into a Pandas DataFrame. Not connected to `load_to_db`. |
@@ -380,7 +380,7 @@ def load_books(...):
 | **Container size** | Dagster container stays lean (~500MB). | Dagster container bloats with Scrapy deps (~1GB+). |
 | **Operational coupling** | Scraper and Dagster can be updated independently. | Version changes to either affect the other. |
 | **Observability** | Scrapyd provides job status via API. Dagster polls and logs progress. | Direct subprocess output captured in Dagster logs, but less structured. |
-| **Shared output** | Docker volume shared between Scrapyd and Dagster containers. Well-established pattern. | No volume needed (same container), but tighter coupling. |
+| **Shared output** | Podman volume shared between Scrapyd and Dagster containers. Well-established pattern. | No volume needed (same container), but tighter coupling. |
 | **Complexity** | Slightly more complex (HTTP polling loop). | Simpler invocation, but more complex container build. |
 
 The Scrapyd API approach wins on dependency isolation, maintainability, and alignment with the existing infrastructure.
@@ -575,7 +575,7 @@ Create a small test JSONL file at `tests/fixtures/test_books.jsonl` containing ~
 uv run pytest tests/unit/ -v
 
 # Integration tests (requires test database running)
-docker compose -f compose.yaml -f compose.test.yaml up -d test-db
+podman compose -f compose.yaml -f compose.test.yaml up -d test-db
 uv run pytest tests/integration/ -v
 
 # All tests with coverage
@@ -601,7 +601,7 @@ markers = [
 
 ## 8. Deployment
 
-### 8.1 Docker Compose Services
+### 8.1 Podman Compose Services
 
 Add three new services to `compose.yaml`: `dagster-webserver`, `dagster-daemon`, and a shared `dagster-code` (user code server). The user code server pattern separates code loading from the webserver and daemon, allowing code updates without restarting the control plane.
 
@@ -778,9 +778,9 @@ python_logs:
 
 ---
 
-### Phase 2: Docker Compose Deployment
+### Phase 2: Podman Compose Deployment
 
-**Goal:** Dagster runs as Docker Compose services (webserver, daemon, code server) alongside the existing stack. The full pipeline can be triggered and monitored from the Dagster web UI accessible at port 3000.
+**Goal:** Dagster runs as Podman Compose services (webserver, daemon, code server) alongside the existing stack. The full pipeline can be triggered and monitored from the Dagster web UI accessible at port 3000.
 
 #### Steps
 
@@ -791,13 +791,13 @@ python_logs:
 | 2.3 | Update `dagster.yaml` for containerized storage | Phase 1 | `dagster.yaml` |
 | 2.4 | Add Dagster services to `compose.yaml` | 2.1-2.3 | `compose.yaml` |
 | 2.5 | Configure shared volume between Scrapyd and Dagster | 2.4 | `compose.yaml` |
-| 2.6 | Verify end-to-end pipeline in Docker | 2.4-2.5 | Manual testing |
-| 2.7 | Update `CLAUDE.md` with new Docker commands | 2.6 | `CLAUDE.md` |
+| 2.6 | Verify end-to-end pipeline in Podman | 2.4-2.5 | Manual testing |
+| 2.7 | Update `CLAUDE.md` with new Podman commands | 2.6 | `CLAUDE.md` |
 | 2.8 | Update `Makefile` with Dagster targets | 2.6 | `Makefile` |
 
 #### Success Criteria
 
-- [ ] `docker compose up --build -d` starts all services (db, backend, scrapyd, dagster-webserver, dagster-daemon, dagster-code)
+- [ ] `podman compose up --build -d` starts all services (db, backend, scrapyd, dagster-webserver, dagster-daemon, dagster-code)
 - [ ] Dagster web UI is accessible at `http://localhost:3000`
 - [ ] Full pipeline can be triggered from the Dagster UI and completes successfully
 - [ ] Weekly schedule activates automatically and the daemon executes it
@@ -942,7 +942,7 @@ def semantic_search(
 - [ ] Books that already have embeddings are skipped on subsequent runs (idempotent)
 - [ ] Semantic search endpoint returns relevant books for natural language queries
 - [ ] Dagster UI shows embedding generation metadata (count, model, dimensions)
-- [ ] Docker container for Dagster includes sentence-transformers and can run inference on CPU
+- [ ] Podman container for Dagster includes sentence-transformers and can run inference on CPU
 
 ---
 
@@ -993,10 +993,10 @@ def semantic_search(
 
 **Context:** Raw scraper output (`books.jsonl`) needs to be stored somewhere accessible to both the scraper and the Dagster pipeline.
 
-**Decision:** Use local filesystem via Docker volumes with the path configured as a Dagster resource (`PathResource`). No object storage (MinIO/S3) in the current phase.
+**Decision:** Use local filesystem via Podman volumes with the path configured as a Dagster resource (`PathResource`). No object storage (MinIO/S3) in the current phase.
 
 **Consequences:**
-- Positive: Zero additional infrastructure, simple, works with existing Docker volume setup.
+- Positive: Zero additional infrastructure, simple, works with existing Podman volume setup.
 - Negative: Data tied to host machine, no built-in versioning or durability beyond host disk.
 - Migration path: Replace `PathResource` with an S3/MinIO IO manager when needed. Downstream assets do not change because they receive data via Dagster's asset dependency system, not direct file reads.
 
@@ -1038,7 +1038,7 @@ If concurrent pipeline runs, longer run history, or multi-instance Dagster deplo
 
 When CI is implemented:
 1. Add GitHub Actions workflow that runs `uv run pytest tests/unit/` on every PR.
-2. Add a separate job that starts a test database via `docker compose -f compose.test.yaml` and runs integration tests.
+2. Add a separate job that starts a test database via `podman compose -f compose.test.yaml` and runs integration tests.
 3. Optionally add a Dagster asset materialization test (dry run) as a CI step.
 
 ### Alembic for Database Migrations
@@ -1065,9 +1065,9 @@ If the dataset grows significantly:
 | `DATABASE_URL` | Yes | `postgresql://bookuser:bookpassword@localhost:5432/bookdb` | Dagster, Backend |
 | `SCRAPYD_URL` | No | `http://scrapyd:6800` | Dagster |
 | `RAW_DATA_DIR` | No | `/data/raw/raw` | Dagster |
-| `POSTGRES_DB` | Yes | (none) | Docker Compose |
-| `POSTGRES_USER` | Yes | (none) | Docker Compose |
-| `POSTGRES_PASSWORD` | Yes | (none) | Docker Compose |
+| `POSTGRES_DB` | Yes | (none) | Podman Compose |
+| `POSTGRES_USER` | Yes | (none) | Podman Compose |
+| `POSTGRES_PASSWORD` | Yes | (none) | Podman Compose |
 | `PROXY_TOKEN` | Yes | (none) | Scrapyd |
 | `DAGSTER_HOME` | No | `/opt/dagster/dagster_home` | Dagster containers |
 | `EMBEDDING_MODEL_NAME` | No | `all-MiniLM-L6-v2` | Dagster (Phase 3) |

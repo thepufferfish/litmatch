@@ -9,8 +9,8 @@
 ### Current State
 - Scrapy sitemap spider crawling bookmarks.reviews
 - Incremental scraping via `lastmod` metadata comparison
-- Deployed via Scrapyd in Docker container (port 6800)
-- Output: `books.jsonl` to shared Docker volume
+- Deployed via Scrapyd in Podman container (port 6800)
+- Output: `books.jsonl` to shared Podman volume
 - Proxy rotation and user-agent middleware configured
 - Data volume: ~13,000 books
 
@@ -19,7 +19,6 @@
 - `scraper/bookmarks/settings.py` — Scrapy settings
 - `scraper/bookmarks/middlewares.py` — custom middleware
 - `scraper/bookmarks/proxies.py` — proxy rotation
-- `scraper/bookmarks/pipelines.py` — item pipelines
 - `scraper/Dockerfile` — Scrapyd container
 
 ### Future Scraper Work (Unplanned)
@@ -79,7 +78,7 @@ raw_books ──> validated_books + validation_errors ──> cleaned_books ─�
 - [ ] Unit test coverage >= 80% for utils/ modules
 - [ ] Integration tests pass against test database
 
-## Pipeline Phase 2: Docker Compose Deployment — NOT STARTED
+## Pipeline Phase 2: Podman Compose Deployment — NOT STARTED
 
 **Depends on:** Phase 1 completion
 
@@ -93,13 +92,13 @@ raw_books ──> validated_books + validation_errors ──> cleaned_books ─�
 | Add dagster-code, dagster-webserver, dagster-daemon to `compose.yaml` | `compose.yaml` | HIGH |
 | Configure shared volume (scrapyd ↔ dagster) | `compose.yaml` | HIGH |
 | Add `dagster_storage` volume | `compose.yaml` | HIGH |
-| Verify end-to-end in Docker | Manual | HIGH |
-| Update CLAUDE.md with new Docker commands | `CLAUDE.md` | MEDIUM |
+| Verify end-to-end in Podman | Manual | HIGH |
+| Update CLAUDE.md with new Podman commands | `CLAUDE.md` | MEDIUM |
 | Update Makefile with Dagster targets | `Makefile` | LOW |
 | Update RUNBOOK.md with Dagster service docs | `docs/RUNBOOK.md` | MEDIUM |
 
 ### Phase 2 Success Criteria
-- [ ] `docker compose up --build -d` starts all services including Dagster
+- [ ] `podman compose up --build -d` starts all services including Dagster
 - [ ] Dagster web UI accessible at http://localhost:3000
 - [ ] Pipeline can be triggered from Dagster UI and completes
 - [ ] Weekly schedule activates and daemon executes it
@@ -156,7 +155,7 @@ raw_books ──> validated_books + validation_errors ──> cleaned_books ─�
 **Rationale:** Dependency isolation, smaller Dagster container, independent scaling.
 
 ### ADR-002: Local Filesystem for Raw Data
-**Decision:** Docker volumes with configurable PathResource. No object storage yet.
+**Decision:** Podman volumes with configurable PathResource. No object storage yet.
 **Migration path:** Replace PathResource with S3IOManager when needed.
 
 ### ADR-003: Multi-Asset Quarantine Pattern

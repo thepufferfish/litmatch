@@ -29,10 +29,10 @@
 
 | Component | Directory | Runtime | Port |
 |-----------|-----------|---------|------|
-| Scraper | `scraper/` | Scrapyd (Docker) | 6800 |
+| Scraper | `scraper/` | Scrapyd (Podman) | 6800 |
 | ETL Pipeline | `src/litmatch/` | Dagster | 3000 |
 | Database | — | pgvector/pgvector:pg18 | 5432 |
-| Backend API | `backend/` | FastAPI (Docker) | 8000 |
+| Backend API | `backend/` | FastAPI (Podman) | 8000 |
 | Frontend | `frontend/` | Vite dev server | 5173 |
 | Recommender | `recommender/` | Script (offline) | — |
 
@@ -72,7 +72,7 @@ Logout         → Revoke refresh token + clear cookie
 |--------|---------|----------|
 | `.env` | compose, Makefile, backend | DATABASE_URL, SECRET_KEY, CORS_ORIGINS |
 | `pyproject.toml` | uv, hatch, dagster dg | Python deps, build config |
-| `compose.yaml` | Docker | Service definitions, volumes, ports |
+| `compose.yaml` | Podman Compose | Service definitions, volumes, ports |
 | `Makefile` | Dev scripts | Standalone container targets |
 | `dagster.yaml` | Dagster | Instance logging config |
 | `frontend/package.json` | npm, Vite | JS deps, scripts |

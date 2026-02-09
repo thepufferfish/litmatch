@@ -1,8 +1,8 @@
 # Project Constants
 ENV_FILE=.env
-COMPOSE=docker compose --env-file $(ENV_FILE)
+COMPOSE=podman compose --env-file $(ENV_FILE)
 
-# Docker Compose Commands
+# Podman Compose Commands
 # up:
 # 	$(COMPOSE) up --build -d
 
@@ -24,11 +24,11 @@ COMPOSE=docker compose --env-file $(ENV_FILE)
 
 # # ETL (Assumes mounted volume with books.jsonl)
 # run-etl:
-# 	docker compose run --rm etl python etl_runner.py
+# 	podman compose run --rm etl python etl_runner.py
 
 # # Recommender (if integrated)
 # run-recommender:
-# 	docker compose run --rm etl python recommender/hybrid_engine.py
+# 	podman compose run --rm etl python recommender/hybrid_engine.py
 
 # # Cleanup
 # clean:
@@ -40,11 +40,11 @@ COMPOSE=docker compose --env-file $(ENV_FILE)
 # 	$(COMPOSE) up --build -d
 
 create-db:
-	docker run --name db --network=litnet -e POSTGRES_PASSWORD=bookpassword -e POSTGRES_DB=bookdb -e POSTGRES_USER=bookuser -p 5432:5432 -d postgres 
+	podman run --name db --network=litnet -e POSTGRES_PASSWORD=bookpassword -e POSTGRES_DB=bookdb -e POSTGRES_USER=bookuser -p 5432:5432 -d postgres 
 
 start-api:
-	docker build backend --no-cache -t fastapi:main  
-	docker run --name backend --network=litnet -e DATABASE_URL=postgresql://bookuser:bookpassword@db:5432/bookdb -p 80:80 -d fastapi:main
+	podman build backend --no-cache -t fastapi:main  
+	podman run --name backend --network=litnet -e DATABASE_URL=postgresql://bookuser:bookpassword@db:5432/bookdb -p 80:80 -d fastapi:main
 
 start-backend:
 	make create-db

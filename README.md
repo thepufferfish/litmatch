@@ -26,7 +26,7 @@ Scraper (Scrapy) --> books.jsonl --> Dagster ETL --> PostgreSQL + pgvector
 
 - Python 3.12+
 - Node.js 18+ and npm
-- Docker and Docker Compose
+- Podman and Podman Compose
 - [uv](https://docs.astral.sh/uv/) (preferred Python package manager)
 
 ### 1. Install dependencies
@@ -50,7 +50,7 @@ DATABASE_URL=postgresql://bookuser:bookpassword@localhost:5432/bookdb
 ### 3. Start services
 
 ```bash
-docker compose up --build -d
+podman compose up --build -d
 ```
 
 This starts PostgreSQL (port 5432), the FastAPI backend (port 8000), and Scrapyd (port 6800).
@@ -69,13 +69,13 @@ Open http://localhost:5173 to browse books.
 
 ```bash
 # Database only
-docker compose up db -d
+podman compose up db -d
 
 # Initialize schema (first time or after model changes)
 python -m backend.database
 
 # Backend API
-docker compose up backend -d
+podman compose up backend -d
 
 # Frontend dev server (proxies /api to backend)
 cd frontend && npm run dev
@@ -153,7 +153,7 @@ litmatch/
   src/litmatch/           # Dagster ETL pipeline
     defs/assets.py        #   Asset definitions (extract, load_to_db)
     defs/resources.py     #   Dagster resources
-  compose.yaml            # Docker services
+  compose.yaml            # Podman Compose services
   Makefile                # Convenience targets
   pyproject.toml          # Python project config (hatchling)
   dagster.yaml            # Dagster instance config
