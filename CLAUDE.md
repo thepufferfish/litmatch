@@ -31,7 +31,7 @@ docker compose down          # Stop all services
 ### Individual Services
 ```bash
 python -m backend.database   # Initialize database schema + pgvector extension
-streamlit run frontend/main.py  # Start Streamlit frontend
+cd frontend && npm run dev   # Start React frontend (Vite dev server, port 5173)
 ```
 
 ## Architecture
@@ -39,20 +39,20 @@ streamlit run frontend/main.py  # Start Streamlit frontend
 ```
 Scraper (Scrapy) → books.jsonl → Dagster ETL → PostgreSQL+pgvector
                                                       ↓
-                                              FastAPI Backend (port 80)
+                                              FastAPI Backend (port 8000)
                                                       ↓
-                                              Streamlit Frontend
+                                              React SPA (Vite, port 5173)
 ```
 
 **Five main components:**
 
 - **`scraper/`** — Scrapy project that crawls bookmarks.reviews via sitemap spider. Uses rotating proxies and user-agent middleware. Outputs `books.jsonl`. Can be deployed to Scrapyd (port 6800).
 
-- **`src/litmatch/`** — Dagster orchestration. Assets defined in `defs/assets.py` run a 4-stage ETL: extract (load jsonl) → raw_data (DataFrame) → cleaned_data (fix dates, classify fiction) → load_to_db (upsert into PostgreSQL with full relational model). Dagster root module is `litmatch`.
+- **`src/litmatch/`** — Dagster orchestration. Modular assets in `defs/assets/` run a 4-stage ETL: raw_books (parse jsonl) → validate_raw_books (field validation) → cleaned_books (transform dates, ratings, fiction flag) → load_books (upsert to PostgreSQL). Resources in `defs/resources/`, utilities in `defs/utils/`. Dagster root module is `litmatch`.
 
-- **`backend/`** — FastAPI REST API. Models in `backend/db/models.py` use SQLModel. `backend/database.py` handles DB init and pgvector extension setup. Endpoints: auth (register/login), books, reviews, genres, ratings. Runs in Docker on port 80.
+- **`backend/`** — FastAPI REST API. Models in `backend/db/models.py` use SQLModel. `backend/database.py` handles DB init and pgvector extension setup. Endpoints: auth (register/login/refresh), books, reviews, genres, ratings. Config in `backend/app/config.py` reads env vars. Runs in Docker on port 8000 (compose) or port 80 (Makefile standalone).
 
-- **`frontend/`** — Streamlit app. `main.py` is the entry point, `api.py` wraps backend HTTP calls, `book_page.py` renders book details. Features: genre filtering, search, auth, rating submission.
+- **`frontend/`** — React SPA (Vite + TypeScript + Tailwind CSS v4). Entry point is `src/main.tsx`, API client in `src/api/client.ts`, pages under `src/pages/`, components under `src/components/`. Uses TanStack React Query for data fetching, react-router v7 for routing, AuthContext for JWT auth. The Vite dev server proxies `/api/*` to the backend on port 8000 (stripping the `/api` prefix).
 
 - **`recommender/`** — SVD-based collaborative filtering using the `surprise` library.
 
@@ -71,5 +71,5 @@ PostgreSQL with pgvector. Key entities defined in `backend/db/models.py`:
 - **`pyproject.toml`** — all dependencies, build config (hatchling), Dagster `dg` tool config
 - **`dagster.yaml`** — Dagster instance config (logging)
 - **`compose.yaml`** — Docker services: `db` (postgres:18 + pgvector), `backend` (FastAPI), `scrapyd`
-- **`.env`** — PostgreSQL credentials and DATABASE_URL (used by both Makefile and compose)
+- **`.env`** — PostgreSQL credentials, DATABASE_URL, SECRET_KEY, CORS_ORIGINS, auth cookie config (used by both Makefile and compose). See `.env.example` for all variables.
 - Docker network `litnet` is used for inter-container communication when running via Makefile

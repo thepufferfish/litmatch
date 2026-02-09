@@ -5,7 +5,7 @@
 | Service | Port | Image / Runtime | Health Check |
 |---------|------|-----------------|-------------|
 | PostgreSQL (pgvector) | 5432 | `pgvector/pgvector:pg18` | `pg_isready -U bookuser -d bookdb` |
-| FastAPI Backend | 8000 | Python 3.12 (Docker) | `GET /docs` (Swagger UI) |
+| FastAPI Backend | 8000 (compose) / 80 (Makefile) | Python 3.12 (Docker) | `GET /docs` (Swagger UI) |
 | Scrapyd | 6800 | Python Alpine (Docker) | `GET http://localhost:6800/` |
 | Dagster UI | 3000 | Local (`dg dev`) | `GET http://localhost:3000` |
 | Vite Dev Server | 5173 | Local (`npm run dev`) | `GET http://localhost:5173` |
@@ -66,20 +66,23 @@ dg dev
 ### Asset Graph
 
 ```
-extract (load books.jsonl) -> load_to_db (upsert to PostgreSQL)
+raw_books → validate_raw_books → cleaned_books → load_books
+              ↘ validation_errors
 ```
 
-- **extract**: Reads `books.jsonl` from the scraper output volume
-- **load_to_db**: Upserts books, authors, publishers, genres, critics, publications, and reviews
+- **raw_books**: Reads and parses `books.jsonl` from the scraper output volume
+- **validate_raw_books**: Validates required fields, splits into valid records + error records
+- **cleaned_books**: Transforms dates, ratings, fiction classification, critic names
+- **load_books**: Upserts books, authors, publishers, genres, critics, publications, and reviews into PostgreSQL
 
 **Data source path** (configured in `src/litmatch/defs/assets.py`):
 ```
 /home/framework/.local/share/containers/storage/volumes/litmatch_shared_scraper_output/_data/raw/books.jsonl
 ```
 
-### Orphaned Assets
+### Legacy Assets
 
-`raw_data` and `cleaned_data` assets (plus `fix_publish_dates`, `check_if_fiction`, `add_fiction_flag` helpers) are disconnected from the active pipeline. They exist for potential future use.
+`assets_legacy.py` contains the original monolithic asset definitions (`raw_data`, `cleaned_data`, `load_to_db`). These are disconnected from the active pipeline which uses the modular assets in `defs/assets/`.
 
 ## Scraper (Scrapy via Scrapyd)
 

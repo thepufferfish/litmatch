@@ -1,0 +1,31 @@
+Codemap Diff Report
+Generated: 2026-02-08
+Baseline: None (first generation)
+
+=== FILES CREATED ===
+  docs/codemaps/architecture.md  (new - 74 lines)
+  docs/codemaps/backend.md       (new - 98 lines)
+  docs/codemaps/frontend.md      (new - 109 lines)
+  docs/codemaps/data.md          (new - 131 lines)
+
+=== DIFF FROM PREVIOUS ===
+  No previous codemaps existed. Diff percentage: N/A (100% new content).
+  Approval threshold (30%) not applicable for first generation.
+
+=== ALSO UPDATED (docs sync) ===
+  CLAUDE.md        — Fixed Streamlit→React, port 80→8000, ETL pipeline names
+  docs/CONTRIB.md  — Expanded env vars table (5→9), updated project structure
+  docs/RUNBOOK.md  — Fixed backend port, updated asset graph, legacy assets section
+  .env.example     — Created (was missing)
+
+=== SOURCE FILES ANALYZED ===
+  backend/       : 7 source files, 7 test files
+  frontend/src/  : 21 source files, 12 test files
+  src/litmatch/  : 11 source files
+  scraper/       : 6 source files
+  recommender/   : 1 source file
+  Total          : 46 source files, 19 test files
+
+=== NEXT REFRESH ===
+  Re-run /update-codemaps after significant structural changes.
+  Codemaps will diff against this baseline.

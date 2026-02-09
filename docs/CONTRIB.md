@@ -25,15 +25,23 @@ cd frontend && npm install
 
 ### 3. Configure environment variables
 
-Create a `.env` file in the project root:
+Copy `.env.example` to `.env` and adjust values:
 
-| Variable | Purpose | Example |
-|----------|---------|---------|
-| `POSTGRES_DB` | PostgreSQL database name | `bookdb` |
-| `POSTGRES_USER` | PostgreSQL username | `bookuser` |
-| `POSTGRES_PASSWORD` | PostgreSQL password | `bookpassword` |
-| `DATABASE_URL` | Full connection string (used by backend + Dagster) | `postgresql://bookuser:bookpassword@localhost:5432/bookdb` |
-| `PROXY_TOKEN` | Proxy service token for scraper | *(required for scraping)* |
+```bash
+cp .env.example .env
+```
+
+| Variable | Purpose | Required | Default |
+|----------|---------|----------|---------|
+| `POSTGRES_DB` | PostgreSQL database name | Yes | — |
+| `POSTGRES_USER` | PostgreSQL username | Yes | — |
+| `POSTGRES_PASSWORD` | PostgreSQL password | Yes | — |
+| `DATABASE_URL` | Full connection string (backend + Dagster) | Yes | — |
+| `SECRET_KEY` | JWT signing key for auth tokens | Yes | — |
+| `CORS_ORIGINS` | Comma-separated allowed origins | No | `http://localhost:5173` |
+| `COOKIE_SECURE` | Set refresh cookie as Secure | No | `true` |
+| `REFRESH_COOKIE_PATH` | Path scope for refresh cookie | No | `/auth/refresh` |
+| `PROXY_TOKEN` | Proxy service token for scraper | For scraping | — |
 
 ### 4. Start the database
 
@@ -150,28 +158,36 @@ Tests are colocated with source files (e.g., `SearchBar.test.tsx`, `slugify.test
 ```
 litmatch/
   backend/              # FastAPI REST API
-    app/main.py         # API endpoints
+    app/
+      main.py           # API endpoints + CORS + rate limiting
+      auth.py           # JWT access/refresh token logic
+      config.py         # Environment variable configuration
+      rate_limit.py     # slowapi rate limiter setup
     db/models.py        # SQLModel database models
     database.py         # DB initialization + pgvector setup
     Dockerfile          # Backend container
-    tests/              # Backend tests
-  frontend/             # React SPA (Vite + TypeScript + Tailwind)
+    tests/              # Backend tests (pytest)
+  frontend/             # React SPA (Vite + TypeScript + Tailwind v4)
     src/
       api/client.ts     # Axios HTTP client
-      components/       # Reusable UI components
-      hooks/            # TanStack React Query hooks
-      pages/            # Route page components
+      components/       # Reusable UI components (BookCard, SearchBar, etc.)
+      context/          # React contexts (AuthContext for JWT auth)
+      hooks/            # TanStack React Query hooks (useBooks, useGenres, etc.)
+      pages/            # Route page components (BrowsePage, BookDetailPage, etc.)
       types/            # TypeScript type definitions
-      utils/            # Utility functions
+      utils/            # Utility functions (slugify, validation)
   recommender/          # SVD collaborative filtering (surprise)
   scraper/              # Scrapy project for bookmarks.reviews
   src/litmatch/         # Dagster ETL pipeline
-    defs/assets.py      # Dagster asset definitions
-    defs/resources.py   # Dagster resources
+    defs/
+      assets/           # Dagster asset definitions (extract, transform, load, validate)
+      resources/        # Dagster resources (database, path, scrapyd)
+      utils/            # ETL utility functions (db_operations, transforms, validation)
   compose.yaml          # Docker Compose services
   Makefile              # Convenience targets
   pyproject.toml        # Python project config
   dagster.yaml          # Dagster instance config
+  .env.example          # Environment variable template
 ```
 
 ## API Proxy Configuration
