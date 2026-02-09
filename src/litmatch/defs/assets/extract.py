@@ -1,7 +1,10 @@
 """Extract asset: reads raw JSONL data from the scraper output.
 
-This is the first asset in the pipeline. It reads the books.jsonl file
+This is the first asset in the ETL pipeline. It reads the books.jsonl file
 line by line, parsing each JSON line into a dict.
+
+When used in the crawl_and_load job, this asset depends on crawl_books
+to ensure the spider finishes writing books.jsonl before extraction begins.
 """
 import json
 
@@ -13,6 +16,7 @@ from litmatch.defs.resources.path import PathResource
 @dg.asset(
     description="Raw book records extracted from books.jsonl",
     kinds={"python"},
+    deps=["crawl_books"],
 )
 def raw_books(
     context: dg.AssetExecutionContext,
@@ -22,6 +26,14 @@ def raw_books(
 
     Each line is a JSON object representing one book with its reviews.
     Malformed lines are logged and skipped.
+
+    This asset depends on crawl_books when used in the crawl_and_load job,
+    ensuring the spider completes before extraction begins. In the etl_pipeline
+    job (which excludes crawl_books), this asset runs independently.
+
+    Args:
+        context: Dagster asset execution context for logging.
+        path: PathResource providing the path to books.jsonl.
     """
     filepath = path.books_jsonl_path
     context.log.info(f"Reading JSONL from: {filepath}")

@@ -15,7 +15,12 @@ from sqlmodel import Session, SQLModel, select
 
 
 class TestRawBooksAsset:
-    """Tests for the raw_books extract asset."""
+    """Tests for the raw_books extract asset.
+
+    raw_books declares crawl_books as a dependency via deps=["crawl_books"],
+    but can be materialized independently since deps creates a graph-only
+    dependency (not requiring IO manager loads).
+    """
 
     def test_extracts_valid_jsonl(self, jsonl_file: str) -> None:
         from litmatch.defs.assets.extract import raw_books
@@ -23,6 +28,7 @@ class TestRawBooksAsset:
 
         data_dir = os.path.dirname(jsonl_file)
 
+        # raw_books can be materialized without crawl_books being present
         result = dg.materialize_to_memory(
             [raw_books],
             resources={"path": PathResource(raw_data_dir=data_dir)},
