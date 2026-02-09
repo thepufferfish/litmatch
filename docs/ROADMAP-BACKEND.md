@@ -57,6 +57,26 @@
 | UserRating | User star ratings (1-5) |
 | RefreshToken | JWT refresh token storage |
 
+## Phase 2.5: Browse Enhancements — DONE
+
+Additions to the browse and detail APIs implemented after Phase 2.
+
+### Endpoints Updated
+
+| Method | Endpoint | Enhancement |
+|--------|----------|-------------|
+| `GET` | `/books/?sort={option}` | Sorting by rating, reviews, date, title (asc/desc) |
+| `GET` | `/books/search?sort={option}` | Sorting support on search results |
+| `GET` | `/books/`, `/books/{id}` | `avg_critic_rating` and `review_count` annotations |
+| `GET` | `/reviews/{book_id}` | Critic name, publication name, review URL in response |
+| `GET` | `/health` | Database connectivity check (returns 200 or 503) |
+
+### Implementation Details
+- Sort options: `rating_desc`, `reviews_desc`, `date_desc`, `date_asc`, `title_asc`, `title_desc`
+- Rating computed via `func.avg(Review.rating)` subquery, rounded to 1 decimal
+- Null dates sorted last via `nulls_last()`
+- Secondary sort by title for deterministic ordering
+
 ## Phase 3: Recommendations API — PLANNED
 
 **Depends on:** Pipeline Phase 4 (trained recommender model)
@@ -83,8 +103,6 @@
 
 ### 3.4 Additional Endpoints (Potential)
 - `DELETE /ratings/{rating_id}` — remove a rating
-- `GET /books/?sort={field}&order={asc|desc}` — sorting support
-- Health check: `GET /health`, `GET /ready`
 
 ### Open Questions
 - Should recommendations be computed on-demand or pre-computed and cached?
@@ -113,8 +131,9 @@
 |------|----------|--------|
 | `test_auth.py` | JWT auth module | DONE |
 | `test_config.py` | Config module | DONE |
-| `test_endpoints.py` | API endpoints | DONE |
+| `test_endpoints.py` | API endpoints (register, login, books, ratings) | DONE |
 | `test_models.py` | Database models | DONE |
 | `test_rate_limit.py` | Rate limiting | DONE |
 | `test_search.py` | Search endpoint | DONE |
-| Integration tests (full DB) | End-to-end API | NOT STARTED |
+| `test_backend_api.py` (integration) | Full REST API via running compose stack | DONE |
+| `test_database.py` (integration) | Schema initialization and connectivity | DONE |

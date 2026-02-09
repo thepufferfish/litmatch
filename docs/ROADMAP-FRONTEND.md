@@ -53,6 +53,22 @@ All items implemented and verified.
 - Hooks: `useRatings.ts`
 - Utils: `validation.ts`
 
+## Phase 2.5: Browse Enhancements — DONE
+
+Additions to the browse and detail experience implemented after Phase 2.
+
+### Features
+- SortSelect component with 6 sort options (Highest Rated, Most Reviewed, Newest/Oldest, Title A-Z/Z-A)
+- Sort state persisted in URL parameters across page navigation and search
+- CriticRatingBadge component with semantic labels (Rave/Positive/Mixed/Pan) and color-coded badges
+- Average critic rating and review count displayed on both BookCard and BookDetailPage
+- ReviewList component on detail page: critic name, publication, individual rating, review excerpt (4-line clamp), "Read full review" link with URL validation
+- Expand/collapse for reviews (show first 5, "Show all N reviews" button)
+
+### Key Files
+- Components: `SortSelect.tsx`, `CriticRatingBadge.tsx`, `ReviewList.tsx` (enhanced)
+- Updated: `BrowsePage.tsx`, `BookCard.tsx`, `BookDetailPage.tsx`
+
 ## Phase 3: Recommendations & User Features — PLANNED
 
 **Depends on:** Backend Phase 3 (`GET /recommendations/{user_id}`)
@@ -102,8 +118,23 @@ All items implemented and verified.
 |------|----------|--------|
 | `SearchBar.test.tsx` | SearchBar component | DONE |
 | `StarRating.test.tsx` | StarRating component | DONE |
+| `CriticRatingBadge.test.tsx` | CriticRatingBadge component | DONE |
+| `ReviewList.test.tsx` | ReviewList component | DONE |
+| `BookCard.test.tsx` | BookCard component | DONE |
+| `BookGrid.test.tsx` | BookGrid component | DONE |
+| `SortSelect.test.tsx` | SortSelect component | DONE |
+| `GenreSidebar.test.tsx` | GenreSidebar component | DONE |
+| `Pagination.test.tsx` | Pagination component | DONE |
+| `ErrorBoundary.test.tsx` | ErrorBoundary component | DONE |
+| `AuthContext.test.tsx` | Auth context (login/logout/register) | DONE |
 | `BookDetailPage.test.tsx` | BookDetailPage (with auth/rating) | DONE |
+| `BrowsePage.test.tsx` | BrowsePage unit tests | DONE |
+| `BrowsePage.integration.test.tsx` | BrowsePage integration tests | DONE |
+| `useBooks.test.ts` | Books hook | DONE |
+| `useSearchBooks.test.ts` | Search hook | DONE |
+| `useReviews.test.ts` | Reviews hook | DONE |
 | `useRatings.test.ts` | Rating hooks | DONE |
+| `client.test.ts` | API client | DONE |
 | `slugify.test.ts` | Slug utility | DONE |
 | `validation.test.ts` | Form validation | DONE |
 | E2E tests (Playwright) | Critical user flows | NOT STARTED |

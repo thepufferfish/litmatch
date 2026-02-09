@@ -25,12 +25,12 @@
 - Potential: expand to additional review aggregators
 - Potential: scrape additional metadata (awards, bestseller lists)
 
-## Pipeline Phase 1: Core Dagster Pipeline — IN PROGRESS
+## Pipeline Phase 1: Core Dagster Pipeline — DONE
 
 ### Asset Graph
 
 ```
-raw_books ──> validated_books + validation_errors ──> cleaned_books ──> load_books
+crawl_books ──> raw_books ──> validated_books + validation_errors ──> cleaned_books ──> load_books
 ```
 
 ### Completed
@@ -39,74 +39,77 @@ raw_books ──> validated_books + validation_errors ──> cleaned_books ─�
 |------|------|--------|
 | DatabaseResource | `defs/resources/database.py` | DONE |
 | PathResource | `defs/resources/path.py` | DONE |
-| ScrapydResource (placeholder) | `defs/resources/scrapyd.py` | PARTIAL |
+| ScrapydResource (schedule, job_status, is_healthy) | `defs/resources/scrapyd.py` | DONE |
 | Validation utilities | `defs/utils/validation.py` | DONE |
 | Transformation utilities | `defs/utils/transforms.py` | DONE |
 | DB operation utilities | `defs/utils/db_operations.py` | DONE |
-| `raw_books` asset | `defs/assets/extract.py` | DONE |
+| `crawl_books` asset (Scrapyd trigger + poll) | `defs/assets/crawl.py` | DONE |
+| `raw_books` asset (deps on crawl_books) | `defs/assets/extract.py` | DONE |
 | `validate_raw_books` multi-asset | `defs/assets/validate.py` | DONE |
 | `cleaned_books` asset | `defs/assets/transform.py` | DONE |
 | `load_books` asset | `defs/assets/load.py` | DONE |
-| `definitions.py` wiring | `definitions.py` | DONE |
-| Unit tests (validation, transforms, db_ops) | `tests/dagster/` | DONE |
-| Asset integration tests | `tests/dagster/test_assets.py` | DONE |
+| `etl_pipeline` job (ETL-only) | `defs/jobs.py` | DONE |
+| `crawl_and_load` job (full pipeline) | `defs/jobs.py` | DONE |
+| `data_freshness_sensor` (file-watch) | `defs/sensors/data_freshness.py` | DONE |
+| `startup_crawl_sensor` (first-deploy seed) | `defs/sensors/startup_crawl.py` | DONE |
+| `definitions.py` wiring (all assets, jobs, sensors, resources) | `definitions.py` | DONE |
+| Test markers in `pyproject.toml` (unit, integration) | `pyproject.toml` | DONE |
+| `compose.test.yaml` for test database | `compose.test.yaml` | DONE |
+| Unit tests (validation, transforms, db_ops, assets, sensors) | `tests/dagster/` | DONE |
+| Integration tests (health, DB, ETL, API) | `tests/integration/` | DONE |
+| `assets_legacy.py` removed | — | DONE |
 
-### Remaining
+### Phase 1 Enhancements (Optional) — ALL DONE
 
-| Item | Priority | Spec Reference |
-|------|----------|---------------|
-| Implement ScrapydResource methods (schedule_crawl, poll, wait) | HIGH | dagster-spec.md Section 6 |
-| Create `trigger_scrape` op + `scrape_job` | HIGH | Step 1.11 |
-| Create `weekly_etl_schedule` (cron `0 3 * * 0`) | HIGH | Step 1.12 |
-| Create file sensor (optional) | LOW | Step 1.13 |
-| Add metadata emission to all assets (record counts, rates) | MEDIUM | Section 5.1 |
-| Add retry policy to `load_books` (max_retries=2, exponential backoff) | MEDIUM | Section 5.3 |
-| Write quarantine records to JSONL file | MEDIUM | Section 5.1 |
-| Wire ScrapydResource in `definitions.py` | HIGH | Step 1.14 |
-| Delete `assets_legacy.py` | LOW | Step 1.15 |
-| Add test markers to `pyproject.toml` | LOW | Step 1.19 |
-| Create `compose.test.yaml` for test database | MEDIUM | Section 7.2 |
+| Item | Status | Implementation |
+|------|--------|----------------|
+| Metadata emission to all assets | DONE | All 5 assets emit structured metadata (record counts, validation rates, etc.) via `MaterializeResult` or `Output` |
+| Retry policy for `load_books` | DONE | `RetryPolicy(max_retries=2, delay=30, backoff=EXPONENTIAL)` added to load_books asset |
+| Write quarantine records to JSONL file | DONE | `validation_errors` persisted to timestamped JSONL files with microsecond-precision filenames |
+| Weekly ETL schedule | DONE | `weekly_etl_schedule` triggers `etl_pipeline` every Sunday at midnight UTC (default STOPPED) |
 
 ### Phase 1 Success Criteria
-- [ ] `dg dev` launches and shows the full asset graph (4 data assets + 1 job)
-- [ ] Full materialization succeeds end-to-end (raw_books through load_books)
-- [ ] Quarantined records are written to JSONL with error annotations
-- [ ] Asset metadata visible in Dagster UI (record counts, quarantine rates)
-- [ ] `trigger_scrape` op starts and monitors a Scrapyd job
-- [ ] Weekly schedule is visible and toggleable in Dagster UI
-- [ ] No hardcoded paths or database URLs
-- [ ] Unit test coverage >= 80% for utils/ modules
-- [ ] Integration tests pass against test database
+- [x] `dg dev` launches and shows the full asset graph (5 assets + 2 jobs)
+- [x] Full materialization succeeds end-to-end (crawl_books through load_books)
+- [x] Quarantined records are written to JSONL with error annotations
+- [x] Asset metadata visible in Dagster UI (record counts, quarantine rates)
+- [x] `crawl_books` asset starts and monitors a Scrapyd job
+- [x] Weekly schedule is visible and toggleable in Dagster UI
+- [x] No hardcoded paths or database URLs
+- [x] Unit test coverage >= 80% for utils/ modules (100% achieved)
+- [x] Integration tests pass against test database
 
-## Pipeline Phase 2: Podman Compose Deployment — NOT STARTED
+## Pipeline Phase 2: Podman Compose Deployment — DONE
 
-**Depends on:** Phase 1 completion
+### Completed
 
-### Work Items
-
-| Item | File | Priority |
-|------|------|----------|
-| Create `Dockerfile.dagster` | `Dockerfile.dagster` | HIGH |
-| Create `workspace.yaml` (gRPC code server) | `workspace.yaml` | HIGH |
-| Update `dagster.yaml` for SQLite storage paths | `dagster.yaml` | HIGH |
-| Add dagster-code, dagster-webserver, dagster-daemon to `compose.yaml` | `compose.yaml` | HIGH |
-| Configure shared volume (scrapyd ↔ dagster) | `compose.yaml` | HIGH |
-| Add `dagster_storage` volume | `compose.yaml` | HIGH |
-| Verify end-to-end in Podman | Manual | HIGH |
-| Update CLAUDE.md with new Podman commands | `CLAUDE.md` | MEDIUM |
-| Update Makefile with Dagster targets | `Makefile` | LOW |
-| Update RUNBOOK.md with Dagster service docs | `docs/RUNBOOK.md` | MEDIUM |
+| Item | File | Status |
+|------|------|--------|
+| `Dockerfile.dagster` (multi-stage, uv-based) | `Dockerfile.dagster` | DONE |
+| `workspace.yaml` (gRPC code server on port 4000) | `workspace.yaml` | DONE |
+| `dagster.yaml` (logging config) | `dagster.yaml` | DONE |
+| dagster-code service (gRPC, depends on db + scrapyd) | `compose.yaml` | DONE |
+| dagster-webserver service (UI on port 3000) | `compose.yaml` | DONE |
+| dagster-daemon service (sensors, depends on backend) | `compose.yaml` | DONE |
+| Shared volume (scrapyd ↔ dagster: `shared_scraper_output`) | `compose.yaml` | DONE |
+| `dagster_storage` volume | `compose.yaml` | DONE |
+| Health checks on all Dagster services | `compose.yaml` | DONE |
+| Startup ordering (db → dagster-code → webserver/daemon) | `compose.yaml` | DONE |
+| CLAUDE.md updated with Podman commands | `CLAUDE.md` | DONE |
+| Makefile with Dagster targets (`dagster-logs`, etc.) | `Makefile` | DONE |
+| RUNBOOK.md with Dagster service docs | `docs/RUNBOOK.md` | DONE |
+| End-to-end verification in Podman | Manual | DONE |
 
 ### Phase 2 Success Criteria
-- [ ] `podman compose up --build -d` starts all services including Dagster
-- [ ] Dagster web UI accessible at http://localhost:3000
-- [ ] Pipeline can be triggered from Dagster UI and completes
-- [ ] Weekly schedule activates and daemon executes it
-- [ ] Container restarts preserve run history (persistent volume)
+- [x] `podman compose up --build -d` starts all services including Dagster
+- [x] Dagster web UI accessible at http://localhost:3000
+- [x] Pipeline can be triggered from Dagster UI and completes
+- [ ] Weekly schedule activates and daemon executes it (sensors used instead)
+- [x] Container restarts preserve run history (persistent volume)
 
 ## Pipeline Phase 3: Embeddings & Semantic Search — NOT STARTED
 
-**Depends on:** Phase 2 completion, backend model change (embedding column)
+**Depends on:** Phase 2 completion (**unblocked**), backend model change (embedding column)
 
 ### Work Items
 
@@ -176,6 +179,14 @@ raw_books ──> validated_books + validation_errors ──> cleaned_books ─�
 | `test_validation.py` | validate_book_record, validate_review | DONE |
 | `test_transforms.py` | fix_publish_date, encode_rating, clean_critic_name, classify_fiction | DONE |
 | `test_db_operations.py` | upsert_book, get_or_create, prepare_reviews | DONE |
-| `test_assets.py` | Asset materialization | DONE |
-| Integration tests (full pipeline with test DB) | End-to-end | NOT STARTED |
-| `compose.test.yaml` (test database config) | Infrastructure | NOT STARTED |
+| `test_assets.py` | Asset materialization (extract, validate, transform, load) | DONE |
+| `test_crawl_asset.py` | Crawl asset + jobs module | DONE |
+| `test_scrapyd_resource.py` | ScrapydResource HTTP client | DONE |
+| `test_sensors.py` | Data freshness sensor | DONE |
+| `test_startup_crawl_sensor.py` | Startup crawl sensor state machine | DONE |
+| `test_asset_dependencies.py` | Asset dependency validation | DONE |
+| `compose.test.yaml` | Test database config with isolated volumes | DONE |
+| `test_container_health.py` | Service health and port reachability | DONE |
+| `test_database.py` | Schema initialization and connectivity | DONE |
+| `test_etl_pipeline.py` | Full ETL pipeline via Dagster GraphQL API | DONE |
+| `test_backend_api.py` | REST API endpoints (auth, books, search, ratings) | DONE |

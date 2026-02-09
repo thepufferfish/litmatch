@@ -11,6 +11,7 @@ from litmatch.defs.jobs import crawl_and_load, etl_pipeline
 from litmatch.defs.resources.database import DatabaseResource
 from litmatch.defs.resources.path import PathResource
 from litmatch.defs.resources.scrapyd import ScrapydResource
+from litmatch.defs.schedules import weekly_etl_schedule
 from litmatch.defs.sensors.data_freshness import data_freshness_sensor
 from litmatch.defs.sensors.startup_crawl import startup_crawl_sensor
 
@@ -46,6 +47,7 @@ def defs():
     return dg.Definitions(
         assets=[crawl_books, raw_books, validate_raw_books, cleaned_books, load_books],
         jobs=[etl_pipeline, crawl_and_load],
+        schedules=[weekly_etl_schedule],
         sensors=[data_freshness_sensor, startup_crawl_sensor],
         resources={
             "database": DatabaseResource(connection_string=_get_database_url()),

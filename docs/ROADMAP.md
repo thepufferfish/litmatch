@@ -15,20 +15,22 @@ LitMatch is a book discovery and recommendation platform with five components:
 | Component | Phase | Status |
 |-----------|-------|--------|
 | Scraper | Operational | DONE |
-| ETL Pipeline | Phase 1 (Core pipeline) | IN PROGRESS |
-| ETL Pipeline | Phase 2 (Podman deployment) | NOT STARTED |
+| ETL Pipeline | Phase 1 (Core pipeline) | DONE |
+| ETL Pipeline | Phase 2 (Podman deployment) | DONE |
 | ETL Pipeline | Phase 3 (Embeddings) | NOT STARTED |
 | ETL Pipeline | Phase 4 (Recommender training) | NOT STARTED |
 | Backend | Phase 1 (Browse API) | DONE |
 | Backend | Phase 2 (JWT Auth & Ratings) | DONE |
+| Backend | Phase 2.5 (Browse enhancements) | DONE |
 | Backend | Phase 3 (Recommendations API) | NOT STARTED |
 | Frontend | Phase 1 (Browse & Discover) | DONE |
 | Frontend | Phase 2 (Auth & Ratings) | DONE |
+| Frontend | Phase 2.5 (Browse enhancements) | DONE |
 | Frontend | Phase 3 (Recommendations & Profile) | NOT STARTED |
 | Recommender | Standalone prototype | DONE (needs integration) |
 | Deployment | Phase A (Local dev improvements) | DONE |
 | Deployment | Phase B (LAN server) | NOT STARTED |
-| Deployment | Phase C (Dagster integration) | NOT STARTED |
+| Deployment | Phase C (Dagster compose integration) | DONE |
 
 ## Milestones
 
@@ -50,16 +52,22 @@ Users can register, log in, and rate books.
 - Rate limiting on auth and rating endpoints
 - CORS configuration
 
-### Milestone 3: Production-Ready Pipeline — IN PROGRESS
+### Milestone 3: Production-Ready Pipeline — DONE
 
-Dagster pipeline runs fully automated in containers with observability.
+Dagster pipeline runs fully automated in Podman containers with sensor-driven execution.
 
-**Remaining:**
-- Dagster scraper trigger job, weekly schedule, file sensor
-- Asset metadata emission for Dagster UI
-- Retry policies on load_books
-- Quarantine file output
-- Podman Compose integration (dagster-webserver, dagster-daemon, dagster-code)
+- Dagster scraper trigger via `crawl_books` asset (ScrapydResource)
+- Two jobs: `etl_pipeline` (ETL-only) and `crawl_and_load` (full pipeline)
+- Two sensors: `data_freshness_sensor` (file-watch) and `startup_crawl_sensor` (first-deploy seed)
+- Podman Compose: dagster-code (gRPC), dagster-webserver (UI), dagster-daemon (sensors)
+- Health checks and startup ordering for all services
+- Integration test suite with `compose.test.yaml`
+
+**Remaining enhancements (optional):**
+- Weekly schedule (currently event-driven only via sensors)
+- Asset metadata emission for Dagster UI (record counts, rates)
+- Retry policies on `load_books`
+- Quarantine JSONL file output (validation errors captured in-memory but not persisted)
 - See: [Pipeline Roadmap](ROADMAP-PIPELINE.md)
 
 ### Milestone 4: Personalized Recommendations — PLANNED
@@ -72,19 +80,20 @@ Users receive book recommendations based on their ratings.
 - Frontend: profile page, "Recommended for You" section
 - See: [Backend Roadmap](ROADMAP-BACKEND.md), [Frontend Roadmap](ROADMAP-FRONTEND.md), [Pipeline Roadmap](ROADMAP-PIPELINE.md)
 
-### Milestone 5: Local & LAN Deployment — PLANNED
+### Milestone 5: LAN Deployment — PARTIALLY DONE
 
-Application deployed as a self-contained Podman Compose stack, accessible on the local network.
+Application deployed as a self-contained Podman Compose stack. Local dev stack is complete; LAN server deployment remains.
 
 **Sub-milestones:**
 
-#### 5a: Local Development Stack
-- Podman Compose starts DB + backend + scraper with health checks and proper startup ordering
-- Backend has `/health` endpoint
-- `.env.example` documents all required variables
-- Frontend runs via Vite dev server (existing workflow preserved)
+#### 5a: Local Development Stack — DONE
+- Podman Compose starts DB + backend + scraper + Dagster with health checks and startup ordering
+- Backend has `/health` endpoint verifying database connectivity
+- Frontend served via Nginx container (port 8080) with SPA routing and `/api` proxy
+- `.env.example` documents all required/optional variables
+- Dagster services (code, webserver, daemon) fully integrated in compose
 
-#### 5b: LAN Server Stack
+#### 5b: LAN Server Stack — NOT STARTED
 - Caddy reverse proxy builds and serves frontend as static files
 - All services behind Caddy (single port 80 exposed to LAN)
 - systemd service for auto-start on boot
@@ -92,11 +101,6 @@ Application deployed as a self-contained Podman Compose stack, accessible on the
 - Firewall configured (only port 80 exposed)
 - mDNS (Avahi) for `litmatch.local` hostname
 - Update/redeploy procedure documented
-
-#### 5c: Dagster Integration (depends on Pipeline Phase 2)
-- Dagster services added to compose with `dagster` profile
-- Dagster UI accessible via Caddy at `/dagster/`
-- Weekly ETL schedule runs unattended
 
 See: [Deployment Roadmap](ROADMAP-DEPLOY.md)
 
@@ -120,8 +124,8 @@ Scraper ─────────────┐
 **Key dependency chains:**
 - Frontend Phase 3 → Backend Phase 3 (recommendations endpoint)
 - Backend Phase 3 → Pipeline Phase 4 (trained recommender model)
-- Pipeline Phase 3 (embeddings) → Pipeline Phase 2 (Podman deployment for sentence-transformers)
-- Pipeline Phase 2 → Pipeline Phase 1 completion (all assets, schedule)
+- Pipeline Phase 3 (embeddings) → Pipeline Phase 2 (Podman deployment for sentence-transformers) — **unblocked**
+- Deployment Phase B → Deployment Phase A — **unblocked**
 
 ## Detailed Roadmaps
 

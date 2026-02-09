@@ -21,7 +21,7 @@ from litmatch.defs.resources.path import PathResource
 def raw_books(
     context: dg.AssetExecutionContext,
     path: PathResource,
-) -> list[dict]:
+) -> dg.Output[list[dict]]:
     """Read and parse the books.jsonl file.
 
     Each line is a JSON object representing one book with its reviews.
@@ -52,4 +52,10 @@ def raw_books(
                 skipped += 1
 
     context.log.info(f"Extracted {len(data)} records ({skipped} skipped)")
-    return data
+    return dg.Output(
+        data,
+        metadata={
+            "record_count": len(data),
+            "skipped_count": skipped,
+        },
+    )

@@ -70,7 +70,7 @@ def _execute_crawl(scrapyd: ScrapydResource, log: _Logger) -> str:
 def crawl_books(
     context: dg.AssetExecutionContext,
     scrapyd: ScrapydResource,
-) -> str:
+) -> dg.Output[str]:
     """Schedule and monitor a Scrapyd spider crawl.
 
     Delegates to _execute_crawl for the core polling logic.
@@ -80,6 +80,10 @@ def crawl_books(
         scrapyd: ScrapydResource providing the Scrapyd HTTP client.
 
     Returns:
-        The Scrapyd job ID string.
+        Output containing the Scrapyd job ID string with metadata.
     """
-    return _execute_crawl(scrapyd, context.log)
+    job_id = _execute_crawl(scrapyd, context.log)
+    return dg.Output(
+        job_id,
+        metadata={"job_id": job_id},
+    )

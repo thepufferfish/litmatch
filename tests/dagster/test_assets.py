@@ -14,6 +14,14 @@ from sqlalchemy import create_engine
 from sqlmodel import Session, SQLModel, select
 
 
+def _find_output_value(outputs: list, output_name: str) -> list[dict]:
+    """Find an Output with the given name and return its value."""
+    for output in outputs:
+        if isinstance(output, dg.Output) and output.output_name == output_name:
+            return output.value
+    raise AssertionError(f"No Output with name '{output_name}' found")
+
+
 class TestRawBooksAsset:
     """Tests for the raw_books extract asset.
 
@@ -71,19 +79,29 @@ class TestRawBooksAsset:
 
 
 class TestValidateRawBooksAsset:
-    """Tests for the validate_raw_books multi-asset (direct invocation)."""
+    """Tests for the validate_raw_books multi-asset (direct invocation).
 
-    def test_valid_records_pass(self, sample_records: list[dict]) -> None:
+    After the metadata emission refactor, validate_raw_books yields
+    Output objects instead of returning a tuple.
+    """
+
+    def test_valid_records_pass(self, sample_records: list[dict], tmp_path) -> None:
         from litmatch.defs.assets.validate import validate_raw_books
+        from litmatch.defs.resources.path import PathResource
 
-        context = dg.build_asset_context()
-        valid, errors = validate_raw_books(context, sample_records)
+        path_resource = PathResource(raw_data_dir=str(tmp_path))
+        context = dg.build_asset_context(resources={"path": path_resource})
+        outputs = list(validate_raw_books(context, sample_records))
+
+        valid = _find_output_value(outputs, "validated_books")
+        errors = _find_output_value(outputs, "validation_errors")
 
         assert len(valid) == 2
         assert len(errors) == 0
 
-    def test_invalid_record_captured(self) -> None:
+    def test_invalid_record_captured(self, tmp_path) -> None:
         from litmatch.defs.assets.validate import validate_raw_books
+        from litmatch.defs.resources.path import PathResource
 
         bad_record = {
             "title": "",
@@ -98,15 +116,20 @@ class TestValidateRawBooksAsset:
             "reviews": [],
         }
 
-        context = dg.build_asset_context()
-        valid, errors = validate_raw_books(context, [bad_record])
+        path_resource = PathResource(raw_data_dir=str(tmp_path))
+        context = dg.build_asset_context(resources={"path": path_resource})
+        outputs = list(validate_raw_books(context, [bad_record]))
+
+        valid = _find_output_value(outputs, "validated_books")
+        errors = _find_output_value(outputs, "validation_errors")
 
         assert len(valid) == 0
         assert len(errors) == 1
         assert errors[0]["url"] == ""
 
-    def test_invalid_reviews_filtered_but_book_kept(self) -> None:
+    def test_invalid_reviews_filtered_but_book_kept(self, tmp_path) -> None:
         from litmatch.defs.assets.validate import validate_raw_books
+        from litmatch.defs.resources.path import PathResource
 
         record = {
             "title": "Good Book",
@@ -136,15 +159,22 @@ class TestValidateRawBooksAsset:
             ],
         }
 
-        context = dg.build_asset_context()
-        valid, errors = validate_raw_books(context, [record])
+        path_resource = PathResource(raw_data_dir=str(tmp_path))
+        context = dg.build_asset_context(resources={"path": path_resource})
+        outputs = list(validate_raw_books(context, [record]))
+
+        valid = _find_output_value(outputs, "validated_books")
 
         assert len(valid) == 1
         assert len(valid[0]["reviews"]) == 1  # Bad review filtered out
 
 
 class TestCleanedBooksAsset:
-    """Tests for the cleaned_books transform asset (direct invocation)."""
+    """Tests for the cleaned_books transform asset (direct invocation).
+
+    After the metadata emission refactor, cleaned_books returns an
+    Output object instead of a plain list.
+    """
 
     def test_transforms_validated_records(self) -> None:
         from litmatch.defs.assets.transform import cleaned_books
@@ -173,8 +203,9 @@ class TestCleanedBooksAsset:
         ]
 
         context = dg.build_asset_context()
-        output = cleaned_books(context, records)
+        result = cleaned_books(context, records)
 
+        output = result.value if isinstance(result, dg.Output) else result
         assert len(output) == 1
         assert output[0]["publish_date"] == date(2025, 10, 7)
         assert output[0]["is_fiction"] is True
@@ -200,8 +231,9 @@ class TestCleanedBooksAsset:
         ]
 
         context = dg.build_asset_context()
-        output = cleaned_books(context, records)
+        result = cleaned_books(context, records)
 
+        output = result.value if isinstance(result, dg.Output) else result
         assert len(output) == 0  # Record was skipped
 
 
@@ -289,8 +321,10 @@ class TestLoadBooksAsset:
 
         Uses savepoints so each record is independently committed.
         """
+        from unittest.mock import patch
         from litmatch.defs.assets.load import load_books
         from backend.db.models import Book
+        from sqlalchemy.exc import IntegrityError
 
         db_resource, conn_str = self._make_db_resource()
 
@@ -307,7 +341,6 @@ class TestLoadBooksAsset:
             "is_fiction": True,
             "reviews": [],
         }
-        # This record will cause an error (missing required 'url' key)
         bad_record = {
             "title": "Bad Book",
             "author": "Bad Author",
@@ -315,7 +348,7 @@ class TestLoadBooksAsset:
             "publish_date": date(2025, 1, 1),
             "description": "A bad book.",
             "genres": ["Fiction"],
-            # Missing 'url' key entirely -- will cause KeyError in upsert_book
+            "url": "https://bookmarks.reviews/reviews/bad-book/",
             "cover": None,
             "last_scraped": datetime(2025, 10, 13, 11, 0, 0),
             "is_fiction": True,
@@ -335,8 +368,18 @@ class TestLoadBooksAsset:
             "reviews": [],
         }
 
+        # Mock upsert_book to raise SQLAlchemyError on the bad record
+        from litmatch.defs.utils import db_operations
+        original_upsert = db_operations.upsert_book
+
+        def mock_upsert(session, record):
+            if record["url"] == "https://bookmarks.reviews/reviews/bad-book/":
+                raise IntegrityError("Constraint violation", params=None, orig=None)
+            return original_upsert(session, record)
+
         context = dg.build_asset_context(resources={"database": db_resource})
-        load_books(context, cleaned_books=[good_record, bad_record, good_record_2])
+        with patch("litmatch.defs.assets.load.upsert_book", side_effect=mock_upsert):
+            load_books(context, cleaned_books=[good_record, bad_record, good_record_2])
 
         engine = create_engine(conn_str)
         with Session(engine) as session:

@@ -78,17 +78,17 @@ backend:
 ```
 
 ### Success Criteria
-- [ ] `podman compose up -d` starts db, backend, scrapyd with proper startup ordering
-- [ ] Backend waits for healthy database before starting
-- [ ] `curl http://localhost:8000/health` returns `{"status": "ok"}`
-- [ ] `podman compose ps` shows all services as "healthy"
-- [ ] Frontend dev server (`npm run dev`) connects to backend via Vite proxy
-- [ ] `.env.example` exists and documents every required/optional variable
-- [ ] No secrets in `.env.example`
+- [x] `podman compose up -d` starts db, backend, scrapyd with proper startup ordering
+- [x] Backend waits for healthy database before starting
+- [x] `curl http://localhost:8000/health` returns `{"status": "ok"}`
+- [x] `podman compose ps` shows all services as "healthy"
+- [x] Frontend dev server (`npm run dev`) connects to backend via Vite proxy
+- [x] `.env.example` exists and documents every required/optional variable
+- [x] No secrets in `.env.example`
 
 ## Phase B: LAN Server Deployment — NOT STARTED
 
-**Depends on:** Phase A complete
+**Depends on:** Phase A complete (**unblocked**)
 
 **Goal:** Full application stack accessible from any device on the local network at
 `http://litmatch.local`, with automatic startup, daily backups, and a simple update procedure.
@@ -152,16 +152,15 @@ COPY --from=frontend-build /app/dist /srv/frontend
 COPY Caddyfile /etc/caddy/Caddyfile
 ```
 
-**Compose profiles** (single file, two modes):
+**Current state:** All services (db, backend, frontend/Nginx, scrapyd, dagster-code, dagster-webserver, dagster-daemon) run in the main compose without profiles. Phase B will add Caddy as a `server` profile service.
+
+**Compose profiles** (planned for Phase B):
 ```bash
-# Local dev (DB + backend + scraper only)
+# Local dev (current: all services, frontend via Nginx on port 8080)
 podman compose up -d
 
-# LAN server (full stack with Caddy)
+# LAN server (full stack with Caddy on port 80)
 podman compose --profile server up -d
-
-# LAN server + Dagster pipeline monitoring
-podman compose --profile server --profile dagster up -d
 ```
 
 **Podman rootless setup** (one-time, enables user-level containers that survive logout):
@@ -185,9 +184,9 @@ Wants=network-online.target
 Type=oneshot
 RemainAfterExit=yes
 WorkingDirectory=/home/framework/Projects/litmatch
-ExecStart=/usr/bin/podman compose --profile server --profile dagster up -d --remove-orphans
-ExecStop=/usr/bin/podman compose --profile server --profile dagster down
-ExecReload=/usr/bin/podman compose --profile server --profile dagster up -d --build --remove-orphans
+ExecStart=/usr/bin/podman compose --profile server up -d --remove-orphans
+ExecStop=/usr/bin/podman compose --profile server down
+ExecReload=/usr/bin/podman compose --profile server up -d --build --remove-orphans
 TimeoutStartSec=120
 
 [Install]
@@ -256,13 +255,14 @@ Cron (daily at 4:00 AM):
 cd /home/framework/Projects/litmatch
 git pull origin dev
 systemctl --user reload litmatch.service
-# Or: podman compose --profile server --profile dagster up -d --build --remove-orphans
+# Or: podman compose --profile server up -d --build --remove-orphans
 ```
 
 ### Success Criteria
 - [ ] `podman compose --profile server up -d` starts all services including Caddy
 - [ ] `http://litmatch.local` serves the React SPA from any LAN device
 - [ ] `/api/books/` requests are proxied to the backend correctly
+- [ ] `/dagster/` requests are proxied to dagster-webserver
 - [ ] SPA client-side routing works (direct URL access to `/books/123`)
 - [ ] Login/register/logout work through the reverse proxy (cookies set correctly)
 - [ ] Only port 80 is accessible from the LAN
@@ -271,27 +271,33 @@ systemctl --user reload litmatch.service
 - [ ] Backups older than 30 days are automatically pruned
 - [ ] Update procedure: `git pull && systemctl --user reload litmatch` works
 
-## Phase C: Dagster Integration — NOT STARTED
+## Phase C: Dagster Compose Integration — DONE
 
-**Depends on:** Phase B complete, Pipeline Phase 2 complete
+**Note:** Dagster services were added directly to the main compose (no profile), not behind Caddy. Caddy integration deferred to Phase B (LAN server).
 
-**Goal:** Dagster services run alongside the application stack; UI accessible through Caddy.
+### Completed
 
-### Work Items
+| Step | Item | File(s) | Status |
+|------|------|---------|--------|
+| C.1 | Dagster services in compose.yaml (code, webserver, daemon) | `compose.yaml` | DONE |
+| C.2 | Health checks on all Dagster services | `compose.yaml` | DONE |
+| C.3 | Startup ordering (db → code → webserver/daemon) | `compose.yaml` | DONE |
+| C.4 | Dagster storage persistent volume | `compose.yaml` | DONE |
+| C.5 | RUNBOOK.md with Dagster operational docs | `docs/RUNBOOK.md` | DONE |
+| C.6 | Dagster-daemon depends on backend (ensures DB schema init) | `compose.yaml` | DONE |
 
-| Step | Item | File(s) | Priority |
-|------|------|---------|----------|
-| C.1 | Add Dagster services to compose.yaml with `dagster` profile | `compose.yaml` | HIGH |
-| C.2 | Add `/dagster/*` route to Caddyfile | `Caddyfile` | MEDIUM |
-| C.3 | Verify weekly schedule runs unattended | Manual | HIGH |
-| C.4 | Verify Dagster storage persists across restarts | Manual | HIGH |
-| C.5 | Update RUNBOOK.md with Dagster operational docs | `docs/RUNBOOK.md` | MEDIUM |
+### Deferred to Phase B
+| Step | Item | Notes |
+|------|------|-------|
+| C.7 | Add `/dagster/*` route to Caddyfile | Requires Phase B Caddy setup |
+| C.8 | Weekly schedule | Event-driven via sensors instead |
 
 ### Success Criteria
-- [ ] `podman compose --profile server --profile dagster up -d` starts everything
-- [ ] Dagster UI accessible at `http://litmatch.local/dagster/`
-- [ ] Weekly ETL schedule triggers and completes
-- [ ] Run history preserved after container restarts
+- [x] `podman compose up --build -d` starts all services including Dagster
+- [x] Dagster UI accessible at http://localhost:3000
+- [ ] Dagster UI accessible at `http://litmatch.local/dagster/` (requires Phase B)
+- [x] Sensors trigger pipeline execution automatically
+- [x] Run history preserved after container restarts
 
 ## Environment Variables Reference
 

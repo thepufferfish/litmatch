@@ -18,3 +18,8 @@ class PathResource(dg.ConfigurableResource):
     def books_jsonl_path(self) -> str:
         """Full path to the books.jsonl file."""
         return f"{self.raw_data_dir}/books.jsonl"
+
+    @property
+    def quarantine_dir(self) -> str:
+        """Full path to the quarantine directory for validation errors."""
+        return f"{self.raw_data_dir}/quarantine"

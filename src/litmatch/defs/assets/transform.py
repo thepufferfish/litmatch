@@ -19,7 +19,7 @@ from litmatch.defs.utils.transforms import transform_book_record
 def cleaned_books(
     context: dg.AssetExecutionContext,
     validated_books: list[dict],
-) -> list[dict]:
+) -> dg.Output[list[dict]]:
     """Apply all data transforms to validated book records.
 
     Each record gets:
@@ -45,4 +45,10 @@ def cleaned_books(
     context.log.info(
         f"Transformed {len(transformed)} records ({skipped} skipped)"
     )
-    return transformed
+    return dg.Output(
+        transformed,
+        metadata={
+            "transformed_count": len(transformed),
+            "skipped_count": skipped,
+        },
+    )
