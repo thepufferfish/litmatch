@@ -54,7 +54,7 @@ marked as unhealthy.
 
 **Startup ordering:**
 - Backend waits for database to be healthy (`depends_on: condition: service_healthy`)
-- Dagster daemon waits for backend to be healthy (ensures DB schema is initialized before startup ETL sensor runs)
+- Dagster daemon waits for both dagster-code and backend to be healthy (ensures DB schema is initialized before startup_crawl_sensor runs)
 - Backend entrypoint script runs database initialization (table creation + pgvector extension) before launching the FastAPI server
 
 ### Standalone (Makefile targets)
@@ -132,7 +132,7 @@ Container path: /data/raw/raw/books.jsonl
 ### Sensors
 
 - **data_freshness_sensor**: Ongoing file-watch, triggers ETL when `books.jsonl` is modified
-- **startup_etl_sensor**: Fires exactly once on first deployment if `books.jsonl` exists, seeds the database automatically
+- **startup_crawl_sensor**: Fires exactly once on first deployment when Scrapyd is healthy, triggers a full crawl-and-load pipeline to seed the database
 
 ### Legacy Assets
 
@@ -207,16 +207,17 @@ Output is written to the `shared_scraper_output` Podman volume as `books.jsonl`.
    podman run --rm -v litmatch_shared_scraper_output:/data alpine ls -la /data/raw/raw
    ```
 
-### Dagster startup ETL sensor not triggering
+### Dagster startup_crawl_sensor not triggering
 
-**Symptom**: Database is empty after first deployment even though `books.jsonl` exists
+**Symptom**: Database is empty after first deployment
 
 **Fix**:
 1. Check dagster-daemon logs: `make dagster-logs` or `podman compose logs dagster-daemon`
-2. Verify the backend service is healthy: `podman compose ps backend`
-3. Ensure dagster-daemon depends on `backend: service_healthy` in `compose.yaml`
-4. Check that database initialization completed: `podman compose logs backend | grep "Database initialized"`
-5. Manually trigger ETL from Dagster UI: http://localhost:3000
+2. Verify the scrapyd service is healthy: `podman compose ps scrapyd`
+3. Verify the backend service is healthy: `podman compose ps backend`
+4. Ensure dagster-daemon depends on both `dagster-code` and `backend` in `compose.yaml`
+5. Check that database initialization completed: `podman compose logs backend | grep "Database initialized"`
+6. Manually trigger crawl_and_load job from Dagster UI: http://localhost:3000
 
 ### Port conflict between Makefile and Podman Compose
 

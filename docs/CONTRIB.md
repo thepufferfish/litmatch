@@ -44,6 +44,7 @@ cp .env.example .env
 | `COOKIE_SECURE` | Set refresh cookie as Secure (use `false` for local dev without TLS) | No | `false` |
 | `REFRESH_COOKIE_PATH` | Path scope for refresh tokens (`/api/auth/refresh` for nginx proxy, `/auth/refresh` for direct backend) | No | `/api/auth/refresh` |
 | `PROXY_TOKEN` | Rotating proxy service token for scraper | For scraping | — |
+| `SCRAPYD_URL` | Scrapyd API URL (used by Dagster to trigger crawl jobs; `scrapyd` for compose, `localhost` for local dev) | No | `http://scrapyd:6800` |
 | `RAW_DATA_DIR` | Path to raw data directory (set automatically in compose.yaml) | No | `/data/raw/raw` |
 
 **Connection String Notes:**
@@ -172,7 +173,7 @@ This starts:
 - **dagster-daemon** (schedules/sensors)
 - **frontend** (nginx) on port 8080
 
-All services have health checks. The backend waits for healthy database before starting. The dagster-daemon waits for healthy backend to ensure database is initialized before the startup ETL sensor runs.
+All services have health checks. The backend waits for healthy database before starting. The dagster-daemon waits for both healthy dagster-code and healthy backend to ensure database is initialized before the startup crawl sensor runs.
 
 ## Testing
 
@@ -209,6 +210,14 @@ Tests are in `tests/integration/`:
 - `test_backend_api.py` — REST API endpoints (auth, books, search, ratings)
 
 **Test fixtures:** `tests/integration/fixtures/books.jsonl` contains 3 sample book records mounted into Dagster containers during integration tests.
+
+**Integration test configuration (`compose.test.yaml`):**
+- Uses isolated test volumes: `postgres_data_test`, `dagster_storage_test` (independent from dev volumes)
+- Mounts `./tests/integration/fixtures` → `/data/raw` (different from production path `/data/raw/raw`)
+- Sets `SCRAPYD_URL=http://scrapyd-disabled:6800` (unreachable host) to keep startup_crawl_sensor idle
+- Sets `RAW_DATA_DIR=/data/raw` (no nested `/raw` subdirectory) to match fixture mount
+- Disables `frontend` and `scrapyd` services (not needed for integration tests)
+- Removes scrapyd dependency from dagster-code (prevents waiting for disabled service)
 
 ### Frontend Tests (TypeScript)
 
@@ -312,7 +321,7 @@ raw_books → validate_raw_books → cleaned_books → load_books
 ### Sensors
 
 - **data_freshness_sensor**: Ongoing file-watch, triggers ETL when `books.jsonl` is modified
-- **startup_etl_sensor**: Fires exactly once on first deployment if `books.jsonl` exists, seeds the database automatically
+- **startup_crawl_sensor**: Fires exactly once on first deployment when Scrapyd is healthy, triggers a full crawl-and-load pipeline to seed the database
 
 ## Network Architecture
 
