@@ -45,7 +45,7 @@ cp .env.example .env
 | `REFRESH_COOKIE_PATH` | Path scope for refresh tokens (`/api/auth/refresh` for nginx proxy, `/auth/refresh` for direct backend) | No | `/api/auth/refresh` |
 | `PROXY_TOKEN` | Rotating proxy service token for scraper | For scraping | — |
 | `SCRAPYD_URL` | Scrapyd API URL (used by Dagster to trigger crawl jobs; `scrapyd` for compose, `localhost` for local dev) | No | `http://scrapyd:6800` |
-| `RAW_DATA_DIR` | Path to raw data directory (set automatically in compose.yaml) | No | `/data/raw/raw` |
+| `RAW_DATA_DIR` | Path to raw data directory (set automatically in compose.yaml) | No | `/data/raw` |
 
 **Connection String Notes:**
 - For compose deployment: use `db` as hostname (container name)
@@ -213,7 +213,7 @@ Tests are in `tests/integration/`:
 
 **Integration test configuration (`compose.test.yaml`):**
 - Uses isolated test volumes: `postgres_data_test`, `dagster_storage_test` (independent from dev volumes)
-- Mounts `./tests/integration/fixtures` → `/data/raw` (different from production path `/data/raw/raw`)
+- Mounts `./tests/integration/fixtures` → `/data/raw` (same as production path)
 - Sets `SCRAPYD_URL=http://scrapyd-disabled:6800` (unreachable host) to keep startup_crawl_sensor idle
 - Sets `RAW_DATA_DIR=/data/raw` (no nested `/raw` subdirectory) to match fixture mount
 - Disables `frontend` and `scrapyd` services (not needed for integration tests)

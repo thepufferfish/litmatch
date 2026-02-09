@@ -126,7 +126,7 @@ raw_books → validate_raw_books → cleaned_books → load_books
 **Data source path** (configured in compose.yaml as volume mount):
 ```
 Podman volume: litmatch_shared_scraper_output
-Container path: /data/raw/raw/books.jsonl
+Container path: /data/raw/books.jsonl
 ```
 
 ### Sensors
@@ -201,10 +201,10 @@ Output is written to the `shared_scraper_output` Podman volume as `books.jsonl`.
 **Fix**:
 1. Run the scraper first to generate `books.jsonl`: `make run-spider`
 2. Check the Podman volume: `podman volume inspect litmatch_shared_scraper_output`
-3. Verify the volume mount in `compose.yaml` (should mount to `/data/raw/raw` in dagster containers)
+3. Verify the volume mount in `compose.yaml` (should mount to `/data/raw` in dagster containers)
 4. Manually inspect volume contents:
    ```bash
-   podman run --rm -v litmatch_shared_scraper_output:/data alpine ls -la /data/raw/raw
+   podman run --rm -v litmatch_shared_scraper_output:/data alpine ls -la /data/raw
    ```
 
 ### Dagster startup_crawl_sensor not triggering
@@ -402,7 +402,7 @@ curl http://localhost:6800/
 curl http://localhost:6800/listjobs.json?project=bookmarks
 
 # Check scraper output
-podman run --rm -v litmatch_shared_scraper_output:/data alpine cat /data/raw/raw/books.jsonl | wc -l
+podman run --rm -v litmatch_shared_scraper_output:/data alpine cat /data/raw/books.jsonl | wc -l
 ```
 
 ## Performance Tuning

@@ -85,7 +85,7 @@ services:
         condition: service_healthy
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
-      RAW_DATA_DIR: /data/raw/raw
+      RAW_DATA_DIR: /data/raw
       SCRAPYD_URL: http://scrapyd:6800
       DAGSTER_HOME: /opt/dagster/dagster_home
     volumes:
@@ -129,7 +129,7 @@ services:
         condition: service_healthy
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
-      RAW_DATA_DIR: /data/raw/raw
+      RAW_DATA_DIR: /data/raw
       SCRAPYD_URL: http://scrapyd:6800
       DAGSTER_HOME: /opt/dagster/dagster_home
     volumes:
