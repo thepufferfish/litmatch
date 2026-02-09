@@ -54,18 +54,18 @@ cd frontend && npm run dev   # Start React frontend (Vite dev server, port 5173)
 ## Architecture
 
 ```
-Scraper (Scrapy) → books.jsonl → Dagster ETL → PostgreSQL+pgvector
-                                                      ↓
-                                              FastAPI Backend (port 8000)
-                                                      ↓
-                                              React SPA (Vite, port 5173)
+Dagster → Scrapyd (crawl) → books.jsonl → Dagster ETL → PostgreSQL+pgvector
+                                                              ↓
+                                                      FastAPI Backend (port 8000)
+                                                              ↓
+                                                      React SPA (Vite, port 5173)
 ```
 
 **Five main components:**
 
-- **`scraper/`** — Scrapy project that crawls bookmarks.reviews via sitemap spider. Uses rotating proxies and user-agent middleware. Outputs `books.jsonl`. Can be deployed to Scrapyd (port 6800).
+- **`scraper/`** — Scrapy project that crawls bookmarks.reviews via sitemap spider. Uses rotating proxies and user-agent middleware. Outputs `books.jsonl`. Deployed to Scrapyd (port 6800) and triggered by Dagster.
 
-- **`src/litmatch/`** — Dagster orchestration. Modular assets in `defs/assets/` run a 4-stage ETL: raw_books (parse jsonl) -> validate_raw_books (field validation) -> cleaned_books (transform dates, ratings, fiction flag) -> load_books (upsert to PostgreSQL). Resources in `defs/resources/`, sensors in `defs/sensors/`, utilities in `defs/utils/`. Two sensors: `data_freshness_sensor` (ongoing file-watch, triggers ETL when books.jsonl is modified) and `startup_etl_sensor` (fires exactly once on first deployment if books.jsonl exists, seeds the database automatically). Dagster root module is `litmatch`.
+- **`src/litmatch/`** — Dagster orchestration. Modular assets in `defs/assets/` run a 5-stage pipeline: crawl_books (trigger Scrapyd spider and poll for completion) -> raw_books (parse jsonl) -> validate_raw_books (field validation) -> cleaned_books (transform dates, ratings, fiction flag) -> load_books (upsert to PostgreSQL). Resources in `defs/resources/` (DatabaseResource, PathResource, ScrapydResource), sensors in `defs/sensors/`, jobs in `defs/jobs.py`, utilities in `defs/utils/`. Two sensors: `data_freshness_sensor` (ongoing file-watch, triggers ETL when books.jsonl is modified) and `startup_crawl_sensor` (fires exactly once on first deployment when Scrapyd is healthy, triggers a full crawl-and-load pipeline to seed the database). Two jobs: `etl_pipeline` (ETL-only assets) and `crawl_and_load` (crawl + ETL). Dagster root module is `litmatch`.
 
 - **`backend/`** — FastAPI REST API. Models in `backend/db/models.py` use SQLModel. `backend/database.py` handles DB init and pgvector extension setup. Endpoints: auth (register/login/refresh), books, reviews, genres, ratings. Config in `backend/app/config.py` reads env vars. Runs in Podman on port 8000 (compose) or port 80 (Makefile standalone).
 
@@ -87,8 +87,8 @@ PostgreSQL with pgvector. Key entities defined in `backend/db/models.py`:
 - **Python 3.12+** required (`.python-version`)
 - **`pyproject.toml`** — all dependencies, build config (hatchling), Dagster `dg` tool config
 - **`dagster.yaml`** — Dagster instance config (logging)
-- **`compose.yaml`** — Podman Compose services: `db` (postgres:18 + pgvector), `backend` (FastAPI), `scrapyd`, `dagster-code` (gRPC code server), `dagster-webserver` (UI on port 3000), `dagster-daemon` (schedules/sensors). All services have health checks; backend and Dagster wait for healthy database before starting. The dagster-daemon depends on `backend: service_healthy` (not db directly) to ensure DB schema is initialized before the startup_etl_sensor runs.
-- **`compose.test.yaml`** — Override for integration tests. Disables frontend/scrapyd, mounts test fixtures into dagster containers, uses isolated volumes. Use with `make test-integration`.
+- **`compose.yaml`** — Podman Compose services: `db` (postgres:18 + pgvector), `backend` (FastAPI), `scrapyd`, `dagster-code` (gRPC code server), `dagster-webserver` (UI on port 3000), `dagster-daemon` (schedules/sensors). All services have health checks; backend and Dagster wait for healthy database before starting. The dagster-code service depends on both `db: service_healthy` and `scrapyd: service_healthy`. The dagster-daemon depends on `backend: service_healthy` (not db directly) to ensure DB schema is initialized before the startup_crawl_sensor runs. SCRAPYD_URL is set to `http://scrapyd:6800` in both dagster-code and dagster-daemon.
+- **`compose.test.yaml`** — Override for integration tests. Disables frontend/scrapyd, mounts test fixtures into dagster containers, uses isolated volumes. Sets SCRAPYD_URL to an unreachable host so the startup_crawl_sensor stays idle during tests. Overrides dagster-code depends_on to remove scrapyd dependency. Use with `make test-integration`.
 - **`.env`** — PostgreSQL credentials, DATABASE_URL, SECRET_KEY, CORS_ORIGINS, auth cookie config (used by both Makefile and compose). See `.env.example` for all variables.
 - Podman network `litnet` is used for inter-container communication when running via Makefile
 
@@ -98,11 +98,13 @@ PostgreSQL with pgvector. Key entities defined in `backend/db/models.py`:
 tests/
   dagster/              # Unit tests for Dagster assets, transforms, validation, sensors
     test_assets.py      # Asset pipeline tests (extract, validate, transform, load)
+    test_crawl_asset.py # Crawl asset + jobs module tests
     test_db_operations.py  # Database upsert operation tests
+    test_scrapyd_resource.py  # ScrapydResource HTTP client tests
+    test_sensors.py     # Data freshness sensor tests
+    test_startup_crawl_sensor.py  # Startup crawl sensor state machine tests
     test_transforms.py  # Data transformation tests
     test_validation.py  # Input validation tests
-    test_sensors.py     # Data freshness sensor tests
-    test_startup_sensor.py  # Startup ETL sensor tests (one-time seed)
   integration/          # Integration tests (require running compose stack)
     fixtures/books.jsonl  # 3 sample book records for test data
     conftest.py         # Session-scoped compose stack fixtures

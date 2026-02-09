@@ -11,7 +11,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
 # Copy dependency files first (layer caching)
-COPY pyproject.toml uv.lock ./
+COPY pyproject.toml uv.lock README.md ./
 
 # Copy source packages
 COPY src/ ./src/
@@ -33,4 +33,4 @@ ENV PYTHONPATH=/opt/dagster/app
 # Default: run the gRPC code server
 CMD ["uv", "run", "dagster", "code-server", "start", \
      "--host", "0.0.0.0", "--port", "4000", \
-     "--module", "litmatch.definitions"]
+     "--module-name", "litmatch.definitions"]

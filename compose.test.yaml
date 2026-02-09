@@ -8,6 +8,7 @@
 #   - Mounts test fixture data instead of scraper output
 #   - Uses a unique project name via COMPOSE_PROJECT_NAME=litmatch-test
 #   - No frontend or scrapyd services (not needed for integration tests)
+#   - SCRAPYD_URL points to unreachable host so startup_crawl_sensor stays idle
 
 services:
   # Override DB to use separate test volume
@@ -28,14 +29,18 @@ services:
   scrapyd:
     profiles: ["disabled"]
 
-  # Override dagster-code to use test fixture data
+  # Override dagster-code to use test fixture data and remove scrapyd dependency
   dagster-code:
+    depends_on:
+      db:
+        condition: service_healthy
     volumes:
       - ./tests/integration/fixtures:/data/raw
       - dagster_storage_test:/opt/dagster/dagster_home/storage
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
       RAW_DATA_DIR: /data/raw
+      SCRAPYD_URL: http://scrapyd-disabled:6800
       DAGSTER_HOME: /opt/dagster/dagster_home
 
   dagster-webserver:
@@ -54,6 +59,7 @@ services:
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
       RAW_DATA_DIR: /data/raw
+      SCRAPYD_URL: http://scrapyd-disabled:6800
       DAGSTER_HOME: /opt/dagster/dagster_home
 
 volumes:

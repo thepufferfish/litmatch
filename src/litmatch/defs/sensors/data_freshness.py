@@ -8,15 +8,10 @@ import os
 
 import dagster as dg
 
+from litmatch.defs.jobs import etl_pipeline
 from litmatch.defs.resources.path import PathResource
 
 CURSOR_KEY = "last_mtime"
-
-etl_pipeline = dg.define_asset_job(
-    name="etl_pipeline",
-    selection=dg.AssetSelection.all(),
-    description="Full ETL pipeline: extract, validate, transform, and load books.",
-)
 
 
 @dg.sensor(

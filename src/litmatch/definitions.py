@@ -2,14 +2,17 @@ import os
 
 import dagster as dg
 
+from litmatch.defs.assets.crawl import crawl_books
 from litmatch.defs.assets.extract import raw_books
 from litmatch.defs.assets.load import load_books
 from litmatch.defs.assets.transform import cleaned_books
 from litmatch.defs.assets.validate import validate_raw_books
+from litmatch.defs.jobs import crawl_and_load, etl_pipeline
 from litmatch.defs.resources.database import DatabaseResource
 from litmatch.defs.resources.path import PathResource
-from litmatch.defs.sensors.data_freshness import data_freshness_sensor, etl_pipeline
-from litmatch.defs.sensors.startup_etl import startup_etl_sensor
+from litmatch.defs.resources.scrapyd import ScrapydResource
+from litmatch.defs.sensors.data_freshness import data_freshness_sensor
+from litmatch.defs.sensors.startup_crawl import startup_crawl_sensor
 
 
 def _get_database_url() -> str:
@@ -33,14 +36,20 @@ def _get_raw_data_dir() -> str:
     return os.environ.get("RAW_DATA_DIR", "scraper/output/raw")
 
 
+def _get_scrapyd_url() -> str:
+    """Read SCRAPYD_URL from environment with a safe default."""
+    return os.environ.get("SCRAPYD_URL", "http://localhost:6800")
+
+
 @dg.definitions
 def defs():
     return dg.Definitions(
-        assets=[raw_books, validate_raw_books, cleaned_books, load_books],
-        jobs=[etl_pipeline],
-        sensors=[data_freshness_sensor, startup_etl_sensor],
+        assets=[crawl_books, raw_books, validate_raw_books, cleaned_books, load_books],
+        jobs=[etl_pipeline, crawl_and_load],
+        sensors=[data_freshness_sensor, startup_crawl_sensor],
         resources={
             "database": DatabaseResource(connection_string=_get_database_url()),
             "path": PathResource(raw_data_dir=_get_raw_data_dir()),
+            "scrapyd": ScrapydResource(base_url=_get_scrapyd_url()),
         },
     )

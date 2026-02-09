@@ -155,7 +155,7 @@ class TestEtlPipelineJob:
 
     def test_etl_pipeline_is_a_job(self) -> None:
         """The etl_pipeline should be a Dagster UnresolvedAssetJobDefinition."""
-        from litmatch.defs.sensors.data_freshness import etl_pipeline
+        from litmatch.defs.jobs import etl_pipeline
 
         assert etl_pipeline is not None
         assert etl_pipeline.name == "etl_pipeline"
