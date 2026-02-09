@@ -9,7 +9,7 @@
 | Scrapyd | 6800 | Python Alpine (Podman) | `GET http://localhost:6800/` |
 | Dagster Code Server | 4000 | Python 3.12 (Podman) | `nc -z localhost 4000` |
 | Dagster Webserver | 3000 | Python 3.12 (Podman) | `GET http://localhost:3000/server_info` |
-| Dagster Daemon | — | Python 3.12 (Podman) | — |
+| Dagster Daemon | — | Python 3.12 (Podman) | `dagster-daemon liveness-check` |
 | Frontend (nginx) | 8080 | nginx:alpine (Podman) | `GET http://localhost:8080/` |
 | Vite Dev Server | 5173 | Local (`npm run dev`) | `GET http://localhost:5173` |
 
@@ -133,10 +133,6 @@ Container path: /data/raw/books.jsonl
 
 - **data_freshness_sensor**: Ongoing file-watch, triggers ETL when `books.jsonl` is modified
 - **startup_crawl_sensor**: Fires exactly once on first deployment when Scrapyd is healthy, triggers a full crawl-and-load pipeline to seed the database
-
-### Legacy Assets
-
-`assets_legacy.py` contains the original monolithic asset definitions (`raw_data`, `cleaned_data`, `load_to_db`). These are disconnected from the active pipeline which uses the modular assets in `defs/assets/`.
 
 ## Scraper (Scrapy via Scrapyd)
 
@@ -382,7 +378,7 @@ Check the Dagster UI at http://localhost:3000 for:
 - Asset materialization history
 - Run logs and error details
 - Pipeline scheduling status
-- Sensor status (data_freshness_sensor, startup_etl_sensor)
+- Sensor status (data_freshness_sensor, startup_crawl_sensor)
 
 ```bash
 # Check if Dagster webserver is responding

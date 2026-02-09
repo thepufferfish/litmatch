@@ -187,11 +187,14 @@ uv run pytest tests/dagster/ -v -m "not integration"
 
 Tests are in `tests/dagster/`:
 - `test_assets.py` — Asset pipeline tests (extract, validate, transform, load)
+- `test_asset_dependencies.py` — Asset dependency graph tests
+- `test_crawl_asset.py` — Crawl asset + jobs module tests
 - `test_db_operations.py` — Database upsert operation tests
+- `test_scrapyd_resource.py` — ScrapydResource HTTP client tests
+- `test_sensors.py` — Data freshness sensor tests
+- `test_startup_crawl_sensor.py` — Startup crawl sensor state machine tests
 - `test_transforms.py` — Data transformation tests
 - `test_validation.py` — Input validation tests
-- `test_sensors.py` — Data freshness sensor tests
-- `test_startup_sensor.py` — Startup ETL sensor tests (one-time seed)
 
 ### Integration Tests
 
