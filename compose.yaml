@@ -55,6 +55,73 @@ services:
       timeout: 5s
       retries: 3
 
+  dagster-code:
+    build:
+      context: .
+      dockerfile: Dockerfile.dagster
+    image: litmatch-dagster:local
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      RAW_DATA_DIR: /data/raw/raw
+      DAGSTER_HOME: /opt/dagster/dagster_home
+    volumes:
+      - shared_scraper_output:/data/raw
+      - dagster_storage:/opt/dagster/dagster_home/storage
+    healthcheck:
+      test: ["CMD", "dagster", "api", "grpc-health-check", "--port", "4000"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  dagster-webserver:
+    image: litmatch-dagster:local
+    command: ["uv", "run", "dagster-webserver", "-h", "0.0.0.0", "-p", "3000", "-w", "/opt/dagster/dagster_home/workspace.yaml"]
+    restart: unless-stopped
+    depends_on:
+      dagster-code:
+        condition: service_healthy
+    environment:
+      DAGSTER_HOME: /opt/dagster/dagster_home
+    volumes:
+      - dagster_storage:/opt/dagster/dagster_home/storage
+    ports:
+      - "127.0.0.1:3000:3000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:3000/server_info')"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  dagster-daemon:
+    image: litmatch-dagster:local
+    command: ["uv", "run", "dagster-daemon", "run"]
+    restart: unless-stopped
+    depends_on:
+      dagster-code:
+        condition: service_healthy
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      RAW_DATA_DIR: /data/raw/raw
+      DAGSTER_HOME: /opt/dagster/dagster_home
+    volumes:
+      - shared_scraper_output:/data/raw
+      - dagster_storage:/opt/dagster/dagster_home/storage
+    healthcheck:
+      test: ["CMD", "dagster-daemon", "liveness-check"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
 volumes:
   postgres_data:
   shared_scraper_output:
+  dagster_storage:

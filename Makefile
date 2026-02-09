@@ -3,41 +3,37 @@ ENV_FILE=.env
 COMPOSE=podman compose --env-file $(ENV_FILE)
 
 # Podman Compose Commands
-# up:
-# 	$(COMPOSE) up --build -d
+up:
+	$(COMPOSE) up --build -d
 
-# down:
-# 	$(COMPOSE) down
+down:
+	$(COMPOSE) down
 
-# logs:
-# 	$(COMPOSE) logs -f
+logs:
+	$(COMPOSE) logs -f
 
-# backend-shell:
-# 	$(COMPOSE) exec backend bash
+backend-shell:
+	$(COMPOSE) exec backend bash
 
-# db-shell:
-# 	$(COMPOSE) exec db psql -U $$(grep POSTGRES_USER $(ENV_FILE) | cut -d '=' -f2) -d $$(grep POSTGRES_DB $(ENV_FILE) | cut -d '=' -f2)
+db-shell:
+	$(COMPOSE) exec db psql -U $$(grep POSTGRES_USER $(ENV_FILE) | cut -d '=' -f2) -d $$(grep POSTGRES_DB $(ENV_FILE) | cut -d '=' -f2)
 
-# # Scrapy via Scrapyd
-# run-spider:
-# 	curl http://localhost:6800/schedule.json -d project=bookmarks -d spider=bookmarks
+# Scrapy via Scrapyd
+run-spider:
+	curl http://localhost:6800/schedule.json -d project=bookmarks -d spider=bookmarks
 
-# # ETL (Assumes mounted volume with books.jsonl)
-# run-etl:
-# 	podman compose run --rm etl python etl_runner.py
+# Dagster
+dagster-logs:
+	$(COMPOSE) logs -f dagster-code dagster-webserver dagster-daemon
 
-# # Recommender (if integrated)
-# run-recommender:
-# 	podman compose run --rm etl python recommender/hybrid_engine.py
+# Cleanup
+clean:
+	$(COMPOSE) down -v
 
-# # Cleanup
-# clean:
-# 	$(COMPOSE) down -v
-
-# # Rebuild Everything
-# rebuild:
-# 	$(COMPOSE) down -v
-# 	$(COMPOSE) up --build -d
+# Rebuild Everything
+rebuild:
+	$(COMPOSE) down -v
+	$(COMPOSE) up --build -d
 
 create-db:
 	podman run --name db --network=litnet -e POSTGRES_PASSWORD=bookpassword -e POSTGRES_DB=bookdb -e POSTGRES_USER=bookuser -p 5432:5432 -d postgres 

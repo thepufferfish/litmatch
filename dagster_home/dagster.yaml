@@ -1,0 +1,11 @@
+# Dagster instance config for containerized deployment.
+# Uses SQLite storage backed by a persistent Podman volume.
+# The root dagster.yaml is kept for local `dg dev` usage.
+
+storage:
+  sqlite:
+    base_dir: /opt/dagster/dagster_home/storage
+
+python_logs:
+  managed_python_loggers:
+    - sqlalchemy.engine

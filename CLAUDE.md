@@ -21,11 +21,13 @@ dg dev                       # Start Dagster UI at http://localhost:3000
 
 ### Container Services (Podman)
 ```bash
-podman compose up --build -d       # Start all services (db, backend, scrapyd)
+podman compose up --build -d       # Start all services (db, backend, scrapyd, dagster)
 podman compose ps                  # Check service health status
 podman compose logs -f backend     # Follow backend logs
+podman compose logs -f dagster-code dagster-webserver dagster-daemon  # Dagster logs
 podman compose down                # Stop all services
 curl http://localhost:8000/health  # Verify backend + database connectivity
+curl http://localhost:3000/server_info  # Verify Dagster webserver
 make create-db                     # Start standalone PostgreSQL on litnet network
 make start-api                     # Build and start FastAPI backend (port 80)
 make start-backend                 # Full standalone backend: DB + ETL + API
@@ -73,6 +75,6 @@ PostgreSQL with pgvector. Key entities defined in `backend/db/models.py`:
 - **Python 3.12+** required (`.python-version`)
 - **`pyproject.toml`** — all dependencies, build config (hatchling), Dagster `dg` tool config
 - **`dagster.yaml`** — Dagster instance config (logging)
-- **`compose.yaml`** — Podman Compose services: `db` (postgres:18 + pgvector), `backend` (FastAPI), `scrapyd`. All services have health checks; backend waits for healthy database before starting.
+- **`compose.yaml`** — Podman Compose services: `db` (postgres:18 + pgvector), `backend` (FastAPI), `scrapyd`, `dagster-code` (gRPC code server), `dagster-webserver` (UI on port 3000), `dagster-daemon` (schedules/sensors). All services have health checks; backend and Dagster wait for healthy database before starting.
 - **`.env`** — PostgreSQL credentials, DATABASE_URL, SECRET_KEY, CORS_ORIGINS, auth cookie config (used by both Makefile and compose). See `.env.example` for all variables.
 - Podman network `litnet` is used for inter-container communication when running via Makefile

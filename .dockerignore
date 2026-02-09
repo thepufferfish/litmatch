@@ -1,0 +1,12 @@
+.env
+.env.*
+!.env.example
+.git/
+__pycache__/
+*.pyc
+node_modules/
+frontend/
+scraper/
+recommender/
+*.egg-info/
+.venv/

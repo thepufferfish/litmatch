@@ -53,7 +53,7 @@ DATABASE_URL=postgresql://bookuser:bookpassword@localhost:5432/bookdb
 podman compose up --build -d
 ```
 
-This starts PostgreSQL (port 5432), the FastAPI backend (port 8000), and Scrapyd (port 6800).
+This starts PostgreSQL (port 5432), the FastAPI backend (port 8000), Scrapyd (port 6800), and the Dagster ETL pipeline (UI on port 3000).
 
 ### 4. Start the frontend
 
@@ -80,7 +80,10 @@ podman compose up backend -d
 # Frontend dev server (proxies /api to backend)
 cd frontend && npm run dev
 
-# Dagster ETL UI
+# Dagster ETL (containerized)
+podman compose up dagster-code dagster-webserver dagster-daemon -d
+
+# Dagster ETL UI (local dev, without containers)
 dg dev
 ```
 
