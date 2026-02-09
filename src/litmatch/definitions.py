@@ -8,6 +8,8 @@ from litmatch.defs.assets.transform import cleaned_books
 from litmatch.defs.assets.validate import validate_raw_books
 from litmatch.defs.resources.database import DatabaseResource
 from litmatch.defs.resources.path import PathResource
+from litmatch.defs.sensors.data_freshness import data_freshness_sensor, etl_pipeline
+from litmatch.defs.sensors.startup_etl import startup_etl_sensor
 
 
 def _get_database_url() -> str:
@@ -35,6 +37,8 @@ def _get_raw_data_dir() -> str:
 def defs():
     return dg.Definitions(
         assets=[raw_books, validate_raw_books, cleaned_books, load_books],
+        jobs=[etl_pipeline],
+        sensors=[data_freshness_sensor, startup_etl_sensor],
         resources={
             "database": DatabaseResource(connection_string=_get_database_url()),
             "path": PathResource(raw_data_dir=_get_raw_data_dir()),

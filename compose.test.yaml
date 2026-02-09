@@ -1,0 +1,61 @@
+# Compose override for integration tests.
+#
+# Usage:
+#   podman compose -f compose.yaml -f compose.test.yaml --env-file .env up --build -d
+#
+# Differences from production compose:
+#   - Uses separate test volumes (postgres_data_test, dagster_storage_test)
+#   - Mounts test fixture data instead of scraper output
+#   - Uses a unique project name via COMPOSE_PROJECT_NAME=litmatch-test
+#   - No frontend or scrapyd services (not needed for integration tests)
+
+services:
+  # Override DB to use separate test volume
+  db:
+    volumes:
+      - postgres_data_test:/var/lib/postgresql/data
+
+  # Override backend (same image, test-isolated DB)
+  backend:
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # Disable services not needed for integration tests
+  frontend:
+    profiles: ["disabled"]
+
+  scrapyd:
+    profiles: ["disabled"]
+
+  # Override dagster-code to use test fixture data
+  dagster-code:
+    volumes:
+      - ./tests/integration/fixtures:/data/raw
+      - dagster_storage_test:/opt/dagster/dagster_home/storage
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      RAW_DATA_DIR: /data/raw
+      DAGSTER_HOME: /opt/dagster/dagster_home
+
+  dagster-webserver:
+    volumes:
+      - dagster_storage_test:/opt/dagster/dagster_home/storage
+
+  dagster-daemon:
+    depends_on:
+      dagster-code:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+    volumes:
+      - ./tests/integration/fixtures:/data/raw
+      - dagster_storage_test:/opt/dagster/dagster_home/storage
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      RAW_DATA_DIR: /data/raw
+      DAGSTER_HOME: /opt/dagster/dagster_home
+
+volumes:
+  postgres_data_test:
+  dagster_storage_test:
