@@ -3,12 +3,12 @@ import os
 import dagster as dg
 
 from litmatch.defs.assets.crawl import crawl_books
-from litmatch.defs.assets.embedding import review_embeddings
+from litmatch.defs.assets.embedding import book_embeddings, review_embeddings
 from litmatch.defs.assets.extract import raw_books
 from litmatch.defs.assets.load import load_books
 from litmatch.defs.assets.transform import cleaned_books
 from litmatch.defs.assets.validate import validate_raw_books
-from litmatch.defs.jobs import crawl_and_load, etl_pipeline
+from litmatch.defs.jobs import crawl_and_load, embedding_pipeline, etl_pipeline
 from litmatch.defs.resources.database import DatabaseResource
 from litmatch.defs.resources.embedding_model import EmbeddingModelResource
 from litmatch.defs.resources.path import PathResource
@@ -59,8 +59,9 @@ def defs():
             cleaned_books,
             load_books,
             review_embeddings,
+            book_embeddings,
         ],
-        jobs=[etl_pipeline, crawl_and_load],
+        jobs=[etl_pipeline, crawl_and_load, embedding_pipeline],
         schedules=[weekly_etl_schedule],
         sensors=[data_freshness_sensor, startup_crawl_sensor],
         resources={

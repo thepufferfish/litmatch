@@ -1,9 +1,14 @@
-"""Embedding assets: generate and store vector embeddings for reviews.
+"""Embedding assets for the LitMatch recommendation pipeline.
 
-Phase 1 provides review_embeddings, which encodes review text into
-dense vectors using sentence-transformers. The dimensionality depends
-on the configured model. Reviews that already have embeddings are
-skipped (idempotent).
+Phase 1: review_embeddings encodes review text into dense vectors
+using sentence-transformers. The dimensionality depends on the
+configured model.
+
+Phase 2: book_embeddings computes per-book embeddings by averaging
+the review embeddings for each book using numpy.
+
+Both assets are incremental -- rows that already have embeddings
+are skipped.
 """
 import functools
 import importlib
@@ -150,6 +155,102 @@ def review_embeddings(
                 "model_name": embedding_model.model_name,
                 "dimensions": embedding_model.dimensions,
             },
+        )
+    finally:
+        engine.dispose()
+
+
+@dg.asset(
+    deps=["review_embeddings"],
+    description="Compute book embeddings by averaging review embeddings",
+    kinds={"python", "postgres"},
+    retry_policy=dg.RetryPolicy(
+        max_retries=1,
+        delay=60,
+    ),
+)
+def book_embeddings(
+    context: dg.AssetExecutionContext,
+    database: DatabaseResource,
+) -> dg.MaterializeResult:
+    """Average review embeddings per book to produce book-level embeddings.
+
+    A book's embedding is the element-wise mean of all its review
+    embeddings. Only processes books where:
+    - Book.embedding IS NULL (not yet computed)
+    - At least one Review with a non-null embedding exists for that book
+
+    Books with zero embedded reviews are skipped.
+
+    Returns:
+        MaterializeResult with metadata about the computation.
+    """
+    from collections import defaultdict
+
+    import numpy as np
+
+    Book = _models().Book
+    Review = _models().Review
+    engine = database.get_engine()
+
+    try:
+        # Find eligible books and fetch all their review embeddings
+        # in a single query to avoid N+1 round-trips.
+        with Session(engine) as session:
+            rows = session.exec(
+                select(Review.book_id, Review.embedding)
+                .join(Book, Review.book_id == Book.id)
+                .where(Book.embedding.is_(None))
+                .where(Review.embedding.isnot(None))
+            ).all()
+
+        if not rows:
+            context.log.info("All books already have embeddings")
+            return dg.MaterializeResult(
+                metadata={"books_computed": 0},
+            )
+
+        # Group review embeddings by book_id
+        book_review_map: dict[int, list] = defaultdict(list)
+        for book_id, emb in rows:
+            book_review_map[book_id].append(emb)
+
+        context.log.info(
+            f"Computing embeddings for {len(book_review_map)} books"
+        )
+
+        computed = 0
+
+        with Session(engine) as session:
+            for book_id, embs in book_review_map.items():
+                try:
+                    avg_embedding = np.mean(
+                        [np.array(emb) for emb in embs],
+                        axis=0,
+                    ).tolist()
+                except Exception as exc:
+                    raise dg.Failure(
+                        description=(
+                            f"Failed to compute mean embedding for "
+                            f"book_id={book_id}: {exc}"
+                        ),
+                    ) from exc
+
+                session.execute(
+                    update(Book)
+                    .where(Book.id == book_id)
+                    .values(embedding=avg_embedding)
+                )
+                computed += 1
+
+            session.commit()
+
+        context.log.info(
+            f"Book embedding computation complete: {computed} books"
+        )
+
+        return dg.MaterializeResult(
+            metadata={"books_computed": computed},
         )
     finally:
         engine.dispose()

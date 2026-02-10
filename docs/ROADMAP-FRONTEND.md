@@ -69,38 +69,59 @@ Additions to the browse and detail experience implemented after Phase 2.
 - Components: `SortSelect.tsx`, `CriticRatingBadge.tsx`, `ReviewList.tsx` (enhanced)
 - Updated: `BrowsePage.tsx`, `BookCard.tsx`, `BookDetailPage.tsx`
 
-## Phase 3: Recommendations & User Features — PLANNED
+## Phase 3: Recommendations & Profile — PLANNED
 
-**Depends on:** Backend Phase 3 (`GET /recommendations/{user_id}`)
+**Depends on:** Backend Phase 3 (`GET /recommendations/`, `GET /users/me`)
+
+**Reference:** [Recommender Roadmap](ROADMAP-RECOMMENDER.md) Phase 4
 
 ### 3.1 Profile Page
 - **Route:** `/profile` (protected — redirect to /login if unauthenticated)
 - **Sections:**
   - "My Rated Books" — grid of books the user has rated, with their star rating shown
-  - "Recommended for You" — grid of recommended books from the backend
-- **Data:** `GET /ratings/` (scoped to current user), `GET /recommendations/{user_id}`
-- **Empty states:** "You haven't rated any books yet" / "Rate more books to get recommendations"
-- **New hook:** `useRecommendations(userId)`
+  - "Recommended for You" — recommendations separated into Fiction and Non-Fiction tabs
+- **Data:** `GET /ratings/` (scoped to current user), `GET /recommendations/` (auth required)
+- **Strategy display:** Shows "Personalized" or "Popular" label based on `meta.strategy`
+- **Empty states:**
+  - No ratings: "You haven't rated any books yet"
+  - < 5 ratings: "Rate N more books to get personalized recommendations" (shows popular books as fallback)
+  - >= 5 ratings: Personalized recommendations with fiction/nonfiction tabs
+- **New hook:** `useRecommendations(limit)`
 
-### 3.2 Browse Page Enhancement
-- Add "Recommended" tab or section visible only to authenticated users
-- Show top N recommendations inline on browse page
+### 3.2 Navigation
+- Add "Recommended" link in authenticated header (links to `/profile`)
+- Add `/profile` route (protected) to `App.tsx`
 
-### 3.3 Reading Lists (Underspecified)
-- Allow users to create named lists and add books
-- Requires backend endpoints: `POST /lists/`, `POST /lists/{id}/books/`, `GET /lists/`
-- Needs full design before implementation
+### 3.3 Recommendation Hook
+- **File:** `src/hooks/useRecommendations.ts`
+- Uses TanStack React Query with 5-minute stale time
+- Calls `GET /recommendations/` with auth header
+- Returns `RecommendationResponse` with `fiction`, `nonfiction`, and `meta` fields
 
 ### Estimated New Files
 - `src/pages/ProfilePage.tsx`
 - `src/hooks/useRecommendations.ts`
 - Update `App.tsx` (add `/profile` route, protect it)
+- Update `Header.tsx` (add "Recommended" link when authenticated)
 
 ### Open Questions
 - Should profile show rating history with timestamps?
 - Should there be a "delete rating" option?
-- How many recommendations on browse page vs. profile page?
-- Should reading lists be public or private?
+
+## Phase 4: Semantic Search UI — PLANNED
+
+**Depends on:** Backend Phase 4 (`GET /books/semantic-search`)
+
+**Reference:** [Recommender Roadmap](ROADMAP-RECOMMENDER.md) Phase 5
+
+### 4.1 Semantic Search Toggle
+- Update `SearchBar.tsx` to offer a semantic search toggle (switch between ILIKE text search and embedding-based semantic search)
+- Semantic search calls `GET /books/semantic-search?q={query}` instead of `GET /books/search?q={query}`
+- Same `PaginatedResponse[BookRead]` shape — existing book grid works unchanged
+
+### Future Considerations (Unplanned)
+- Reading lists (requires backend design)
+- Browse page "Recommended" section for authenticated users
 
 ## Future Considerations
 

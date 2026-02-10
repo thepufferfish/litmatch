@@ -20,6 +20,10 @@ def init_db() -> None:
                 "ALTER TABLE review "
                 "ADD COLUMN IF NOT EXISTS embedding vector(384)"
             ))
+            session.exec(text(
+                "ALTER TABLE book "
+                "ADD COLUMN IF NOT EXISTS embedding vector(384)"
+            ))
             session.commit()
     finally:
         engine.dispose()

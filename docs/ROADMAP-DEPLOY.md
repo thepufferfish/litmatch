@@ -315,6 +315,19 @@ systemctl --user reload litmatch.service
 | `SCRAPYD_URL` | No | `http://scrapyd:6800` | Dagster | Scrapyd container address |
 | `RAW_DATA_DIR` | No | `/data/raw/raw` | Dagster | Scraper output path inside container |
 | `DAGSTER_HOME` | No | `/opt/dagster/dagster_home` | Dagster | Dagster storage directory |
+| `EMBEDDING_MODEL_NAME` | No | `all-MiniLM-L6-v2` | Dagster, Backend | Sentence-transformers model for embeddings |
+| `MIN_RATINGS_FOR_RECS` | No | `5` | Backend | Minimum user ratings before personalized recommendations |
+
+## Container Size Impact (Recommender)
+
+The embedding-based recommender system adds sentence-transformers + PyTorch CPU to two containers. See [Recommender Roadmap](ROADMAP-RECOMMENDER.md) for details.
+
+| Container | Before | After | Change |
+|-----------|--------|-------|--------|
+| `dagster-code` / `dagster-daemon` | ~500 MB | ~1.5 GB | +~1 GB (PyTorch CPU + sentence-transformers) |
+| `backend` | ~300 MB | ~1.3 GB | +~1 GB (for semantic search endpoint) |
+| `db` | No change | No change | pgvector already installed |
+| `frontend` | No change | No change | New components only |
 
 ## Architecture Decisions
 

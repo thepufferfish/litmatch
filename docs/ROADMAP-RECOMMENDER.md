@@ -12,8 +12,8 @@ Five implementation phases, each independently shippable:
 
 | Phase | Deliverable | Depends On |
 |-------|------------|------------|
-| Phase 1 | Review embeddings (Dagster asset + DB schema) | Existing ETL pipeline |
-| Phase 2 | Book embeddings (averaged review embeddings) | Phase 1 |
+| Phase 1 | Review embeddings (Dagster asset + DB schema) — **DONE** | Existing ETL pipeline |
+| Phase 2 | Book embeddings (averaged review embeddings) — **DONE** | Phase 1 |
 | Phase 3 | User embeddings + recommendation API | Phase 2 |
 | Phase 4 | Fiction/non-fiction separation + frontend | Phase 3 |
 | Phase 5 | Precomputation, caching, and optimization | Phase 4 |

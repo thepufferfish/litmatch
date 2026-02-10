@@ -79,36 +79,65 @@ Additions to the browse and detail APIs implemented after Phase 2.
 
 ## Phase 3: Recommendations API — PLANNED
 
-**Depends on:** Pipeline Phase 4 (trained recommender model)
+**Depends on:** Pipeline Phase 3 (review + book embeddings stored in PostgreSQL)
+
+**Reference:** [Recommender Roadmap](ROADMAP-RECOMMENDER.md) Phase 3
 
 ### 3.1 Recommendations Endpoint
-- `GET /recommendations/{user_id}` (or `GET /recommendations/` scoped to current user)
-- Requires Bearer auth; users can only request their own recommendations
-- Loads trained SVD model artifact from filesystem
-- Returns `list[Book]` with recommendation scores
-- Fallback: popular books (by average critic rating or review count) if user has < N ratings
-- Response shape: `PaginatedResponse[Book]` or custom shape with scores
+- `GET /recommendations/` scoped to current authenticated user
+- Requires Bearer auth
+- Computes user taste embedding on-demand via signed-weight average of rated book embeddings (weight = rating - 2)
+- Returns `RecommendationResponse` with separate fiction and nonfiction arrays
+- Fallback: popular books (by average critic rating) when user has < 5 ratings
+- Response includes `meta.strategy` ("personalized" or "popular") and `meta.user_ratings_count`
+- Query params: `limit` (1-50, default 10), `category` ("fiction" | "nonfiction" | "all")
+- Already-rated books excluded from results
 
-### 3.2 Semantic Search Endpoint (Pipeline Phase 3 dependency)
-- `GET /books/semantic-search?q={query}&page={n}&limit={n}`
-- Encodes query using sentence-transformers model
-- Queries pgvector for cosine similarity
-- Returns same `PaginatedResponse[Book]` shape
-- May replace or augment existing ILIKE search
-- Performance concern: model loading on startup, not per-request
+### 3.2 User Profile Data
+- `GET /users/me` — return current user's profile (id, username, total_ratings)
+- Requires Bearer auth
 
-### 3.3 User Profile Data
-- `GET /users/me` — return current user's profile data
-- May include: username, join date, total ratings count, average rating given
+### 3.3 Recommendation Logic Module
+- New file: `backend/app/recommendations.py`
+- `compute_user_embedding()` — signed-weight average of book embeddings (rating - 2 offset; 1-star repels, 2-star neutral, 3+ attracts)
+- `find_nearest_books()` — pgvector cosine distance search with fiction/nonfiction filter
+- `get_popular_books()` — fallback for cold-start users
 
-### 3.4 Additional Endpoints (Potential)
+### 3.4 Response Models
+- `RecommendationResponse` — `{fiction: BookRead[], nonfiction: BookRead[], meta: RecommendationMeta}`
+- `RecommendationMeta` — `{user_ratings_count, min_ratings_required, strategy}`
+- `UserProfile` — `{id, username, total_ratings}`
+
+### 3.5 Additional Endpoints (Potential)
 - `DELETE /ratings/{rating_id}` — remove a rating
 
-### Open Questions
-- Should recommendations be computed on-demand or pre-computed and cached?
-- If cached, what invalidation strategy? (Retrain schedule in Dagster)
-- Should the endpoint return a confidence/predicted rating alongside each book?
-- Cold-start strategy for new users and new books?
+### Design Decisions (Resolved)
+- **On-demand computation**: User embeddings computed at request time (sub-millisecond for 5-50 ratings). No precomputation or cache invalidation needed at current scale.
+- **Cold-start**: Users with < 5 ratings get popular books fallback.
+- **No confidence score**: Cosine distance could be normalized to a match % in the future, but deferred for now.
+
+## Phase 4: Semantic Search + Optimization — PLANNED
+
+**Depends on:** Phase 3 + Pipeline Phase 3 (book embeddings)
+
+**Reference:** [Recommender Roadmap](ROADMAP-RECOMMENDER.md) Phase 5
+
+### 4.1 Semantic Search Endpoint
+- `GET /books/semantic-search?q={query}&page={n}&limit={n}`
+- No authentication required
+- Encodes query using sentence-transformers model (loaded once at FastAPI startup via `lru_cache`)
+- Queries pgvector for cosine similarity on book embeddings
+- Returns `PaginatedResponse[BookRead]` (same shape as existing search)
+- Query validation: 2-500 chars
+
+### 4.2 Performance Optimization
+- HNSW index on `book.embedding` if >10K books with embeddings
+- Response caching for recommendations (TTL 5 min) if latency exceeds targets
+- Embedding recomputation sensor in Dagster (trigger on new reviews)
+
+### 4.3 Backend Dockerfile Impact
+- Backend container needs sentence-transformers + PyTorch CPU (~1 GB added to image)
+- Model loaded once at startup, not per-request
 
 ## Security Hardening (Pre-Production)
 

@@ -107,49 +107,60 @@ crawl_books ──> raw_books ──> validated_books + validation_errors ──
 - [ ] Weekly schedule activates and daemon executes it (sensors used instead)
 - [x] Container restarts preserve run history (persistent volume)
 
-## Pipeline Phase 3: Embeddings & Semantic Search — NOT STARTED
+## Pipeline Phase 3: Review + Book Embeddings — DONE
 
-**Depends on:** Phase 2 completion (**unblocked**), backend model change (embedding column)
+**Depends on:** Phase 2 completion (**unblocked**), backend model changes (embedding columns)
 
-### Work Items
+**Reference:** [Recommender Roadmap](ROADMAP-RECOMMENDER.md) Phases 1-2
 
-| Item | File | Priority |
-|------|------|----------|
-| Add embedding column (`Vector(384)`) to Book model | `backend/db/models.py` | HIGH |
-| Database migration for embedding column | Manual SQL or Alembic | HIGH |
-| Add `sentence-transformers` to `pyproject.toml` | `pyproject.toml` | HIGH |
-| Create `EmbeddingModelResource` | `defs/resources/embedding_model.py` | HIGH |
-| Create `book_embeddings` asset | `defs/assets/embedding.py` | HIGH |
-| Update `Dockerfile.dagster` for torch/sentence-transformers | `Dockerfile.dagster` | HIGH |
-| Add semantic search endpoint to FastAPI | `backend/app/main.py` | HIGH |
-| Unit and integration tests | `tests/` | MEDIUM |
+This phase implements the embedding foundation for the recommender system. Review-level embeddings are the atomic unit; book embeddings are computed as averages of review embeddings.
 
-### Architecture Decision
-- Model: `all-MiniLM-L6-v2` (384 dimensions, CPU-friendly)
-- Storage: pgvector column on Book table
-- Incremental: only generate for books without embeddings
-- See: dagster-spec.md Section 9 Phase 3
+### Phase 3a: Review Embeddings (Recommender Phase 1) — DONE
 
-## Pipeline Phase 4: Recommender as Dagster Asset — NOT STARTED
+| Item | File | Status |
+|------|------|--------|
+| Add `embedding` Vector(384) column to Review model | `backend/db/models.py` | DONE |
+| Add migration SQL to `init_db()` | `backend/database.py` | DONE |
+| Add `sentence-transformers`, `torch`, `numpy` to pyproject.toml | `pyproject.toml` | DONE |
+| Create `EmbeddingModelResource` (lazy-loaded model, allowlist security) | `defs/resources/embedding_model.py` | DONE |
+| Create `review_embeddings` asset (incremental, batch 256) | `defs/assets/embedding.py` | DONE |
+| Register resource and asset in definitions.py | `definitions.py` | DONE |
+| Update `Dockerfile.dagster` for torch dependencies | `Dockerfile.dagster` | DONE |
+| Unit tests (mocked model) | `tests/dagster/test_embedding_asset.py`, `test_embedding_resource.py` | DONE |
+| Integration test | `tests/integration/test_embeddings.py` | NOT STARTED |
 
-**Depends on:** Phase 3 completion, sufficient user ratings
+### Phase 3b: Book Embeddings (Recommender Phase 2) — DONE
 
-### Work Items (Outline)
+| Item | File | Status |
+|------|------|--------|
+| Add `embedding` Vector(384) column to Book model | `backend/db/models.py` | DONE |
+| Add migration SQL for book embedding column | `backend/database.py` | DONE |
+| Create `book_embeddings` asset (average review embeddings) | `defs/assets/embedding.py` | DONE |
+| Create `embedding_pipeline` job | `defs/jobs.py` | DONE |
+| Register in definitions.py | `definitions.py` | DONE |
+| Unit tests for averaging logic (21 tests, 99% coverage) | `tests/dagster/test_book_embedding_asset.py` | DONE |
+| Integration test for full pipeline | `tests/integration/test_embeddings.py` | NOT STARTED |
 
-| Item | Description |
-|------|-------------|
-| `trained_recommender_model` asset | Reads user ratings, trains SVD, stores model artifact |
-| `ModelStorageResource` | Manages model artifact path |
-| Retrain schedule | Weekly or sensor-based (new ratings threshold) |
-| Backend endpoint | `GET /recommendations/{user_id}` loads model and predicts |
-| Fallback strategy | Popular books when insufficient user data |
+### Asset Graph Extension
 
-### Open Questions
-- Minimum user ratings before training is meaningful
-- Model evaluation criteria (RMSE tracking as Dagster metadata)
-- Critic reviews vs. user ratings for training data
-- Cold-start strategy for new users
-- Model versioning and rollback
+```
+[Existing Pipeline]
+crawl_books -> raw_books -> validate_raw_books -> cleaned_books -> load_books
+                                                                       |
+                                                                       v
+                                                              review_embeddings
+                                                                       |
+                                                                       v
+                                                              book_embeddings
+```
+
+### Architecture Decisions
+- **Model**: `all-MiniLM-L6-v2` (384 dimensions, 80 MB, CPU-friendly, ~15 min for 100K reviews)
+- **Storage**: pgvector columns on Review and Book tables (review-level is the atomic unit)
+- **Incremental**: only encode reviews/books where `embedding IS NULL`
+- **No SVD training**: The standalone surprise-based SVD prototype (`recommender/`) is superseded. User embeddings are computed on-demand in the backend (no Dagster asset needed).
+- **Container impact**: Dagster container grows from ~500 MB to ~1.5 GB due to PyTorch CPU
+- See: [Recommender Roadmap](ROADMAP-RECOMMENDER.md) ADR-005 through ADR-007
 
 ## Architecture Decisions
 
@@ -166,11 +177,13 @@ crawl_books ──> raw_books ──> validated_books + validation_errors ──
 
 ## Future Considerations
 
+- **Embedding recomputation sensor:** Trigger `embedding_pipeline` when new reviews are loaded (Phase 5 of recommender roadmap)
+- **HNSW index:** Add to `book.embedding` when book count exceeds 50K (see [Recommender Roadmap](ROADMAP-RECOMMENDER.md) scaling thresholds)
 - **Object Storage (MinIO/S3):** When raw data durability or multi-environment support is needed
 - **PostgreSQL-backed Dagster storage:** When concurrent runs or longer history is needed
 - **CI/CD integration:** GitHub Actions for unit tests on PRs, integration tests with test DB
-- **Alembic migrations:** When schema changes become complex (embedding column)
-- **Scaling beyond 100K books:** Partitioned assets, chunked embedding generation, HNSW indexing
+- **Alembic migrations:** When schema changes become complex
+- **Scaling beyond 100K books:** Partitioned assets, chunked embedding generation, HNSW tuning
 
 ## Testing Status
 
@@ -184,6 +197,9 @@ crawl_books ──> raw_books ──> validated_books + validation_errors ──
 | `test_scrapyd_resource.py` | ScrapydResource HTTP client | DONE |
 | `test_sensors.py` | Data freshness sensor | DONE |
 | `test_startup_crawl_sensor.py` | Startup crawl sensor state machine | DONE |
+| `test_embedding_asset.py` | review_embeddings asset (encoding, batching, idempotency, error handling) | DONE |
+| `test_embedding_resource.py` | EmbeddingModelResource (lazy loading, allowlist, encoding) | DONE |
+| `test_book_embedding_asset.py` | book_embeddings asset (averaging, idempotency, engine disposal, correctness) | DONE |
 | `test_asset_dependencies.py` | Asset dependency validation | DONE |
 | `compose.test.yaml` | Test database config with isolated volumes | DONE |
 | `test_container_health.py` | Service health and port reachability | DONE |

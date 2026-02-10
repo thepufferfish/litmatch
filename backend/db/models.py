@@ -42,6 +42,10 @@ class Book(SQLModel, table=True):
     cover: str | None
     is_fiction: bool | None = Field(default=None)
     last_scraped: datetime | None = Field(default=datetime.now())
+    embedding: list[float] | None = Field(
+        default=None,
+        sa_column=Column(Vector(384)),
+    )
 
     author: Author | None = Relationship(back_populates='books')
     publisher: Publisher | None = Relationship(back_populates='books')

@@ -8,7 +8,7 @@ LitMatch is a book discovery and recommendation platform with five components:
 2. **ETL Pipeline** — Dagster orchestration: validate, transform, load to PostgreSQL
 3. **Backend** — FastAPI REST API with JWT auth
 4. **Frontend** — React SPA for browsing, searching, rating books
-5. **Recommender** — SVD-based collaborative filtering (planned integration)
+5. **Recommender** — Embedding-based recommendations using sentence-transformers + pgvector (see [ROADMAP-RECOMMENDER.md](ROADMAP-RECOMMENDER.md))
 
 ## Overall Status
 
@@ -17,17 +17,18 @@ LitMatch is a book discovery and recommendation platform with five components:
 | Scraper | Operational | DONE |
 | ETL Pipeline | Phase 1 (Core pipeline) | DONE |
 | ETL Pipeline | Phase 2 (Podman deployment) | DONE |
-| ETL Pipeline | Phase 3 (Embeddings) | NOT STARTED |
-| ETL Pipeline | Phase 4 (Recommender training) | NOT STARTED |
+| ETL Pipeline | Phase 3 (Review + book embeddings) | DONE |
 | Backend | Phase 1 (Browse API) | DONE |
 | Backend | Phase 2 (JWT Auth & Ratings) | DONE |
 | Backend | Phase 2.5 (Browse enhancements) | DONE |
 | Backend | Phase 3 (Recommendations API) | NOT STARTED |
+| Backend | Phase 4 (Semantic search + optimization) | NOT STARTED |
 | Frontend | Phase 1 (Browse & Discover) | DONE |
 | Frontend | Phase 2 (Auth & Ratings) | DONE |
 | Frontend | Phase 2.5 (Browse enhancements) | DONE |
 | Frontend | Phase 3 (Recommendations & Profile) | NOT STARTED |
-| Recommender | Standalone prototype | DONE (needs integration) |
+| Frontend | Phase 4 (Semantic search UI) | NOT STARTED |
+| Recommender | Standalone SVD prototype | DONE (superseded by embedding approach) |
 | Deployment | Phase A (Local dev improvements) | DONE |
 | Deployment | Phase B (LAN server) | NOT STARTED |
 | Deployment | Phase C (Dagster compose integration) | DONE |
@@ -70,15 +71,24 @@ Dagster pipeline runs fully automated in Podman containers with sensor-driven ex
 - Quarantine JSONL file output (validation errors captured in-memory but not persisted)
 - See: [Pipeline Roadmap](ROADMAP-PIPELINE.md)
 
-### Milestone 4: Personalized Recommendations — PLANNED
+### Milestone 4: Personalized Recommendations — IN PROGRESS
 
-Users receive book recommendations based on their ratings.
+Users receive book recommendations based on their ratings, powered by sentence-transformer embeddings and pgvector nearest-neighbor search. Replaces the standalone SVD prototype with a fully integrated embedding-based system.
+
+**Architecture**: Review text -> sentence-transformers embeddings (384-dim) -> per-book averages -> signed-weight user taste vectors -> pgvector cosine similarity search, separated by fiction/non-fiction.
+
+**Implementation phases** (see [Recommender Roadmap](ROADMAP-RECOMMENDER.md) for full details):
+1. Review embeddings (Dagster asset + DB schema) — Pipeline Phase 3a — **DONE**
+2. Book embeddings (averaged review embeddings) — Pipeline Phase 3b — **DONE**
+3. User embeddings + recommendation API — Backend Phase 3
+4. Fiction/non-fiction separation + frontend — Frontend Phase 3
+5. Semantic search + optimization — Backend Phase 4 + Frontend Phase 4
 
 **Requires:**
-- Pipeline: embedding generation asset, recommender training asset
-- Backend: `GET /recommendations/{user_id}` endpoint, semantic search endpoint
-- Frontend: profile page, "Recommended for You" section
-- See: [Backend Roadmap](ROADMAP-BACKEND.md), [Frontend Roadmap](ROADMAP-FRONTEND.md), [Pipeline Roadmap](ROADMAP-PIPELINE.md)
+- Pipeline: `review_embeddings` + `book_embeddings` Dagster assets, `EmbeddingModelResource`
+- Backend: `GET /recommendations/` endpoint (auth required), `GET /users/me`, `GET /books/semantic-search`
+- Frontend: ProfilePage with fiction/nonfiction tabs, `useRecommendations` hook, semantic search toggle
+- See: [Recommender Roadmap](ROADMAP-RECOMMENDER.md), [Backend Roadmap](ROADMAP-BACKEND.md), [Frontend Roadmap](ROADMAP-FRONTEND.md), [Pipeline Roadmap](ROADMAP-PIPELINE.md)
 
 ### Milestone 5: LAN Deployment — PARTIALLY DONE
 
@@ -112,10 +122,10 @@ Scraper ─────────────┐
                ETL Pipeline ──────────────┐
                      │                     │
                      v                     v
-              PostgreSQL+pgvector    Recommender Training
+              PostgreSQL+pgvector    review_embeddings (Dagster)
                      │                     │
                      v                     v
-              FastAPI Backend ────── Model Artifacts
+              FastAPI Backend ────── book_embeddings (Dagster)
                      │
                      v
               React Frontend
@@ -123,17 +133,19 @@ Scraper ─────────────┐
 
 **Key dependency chains:**
 - Frontend Phase 3 → Backend Phase 3 (recommendations endpoint)
-- Backend Phase 3 → Pipeline Phase 4 (trained recommender model)
-- Pipeline Phase 3 (embeddings) → Pipeline Phase 2 (Podman deployment for sentence-transformers) — **unblocked**
+- Frontend Phase 4 → Backend Phase 4 (semantic search endpoint)
+- Backend Phase 3 → Pipeline Phase 3 (review + book embeddings)
+- Pipeline Phase 3 (embeddings) → Pipeline Phase 2 (Podman deployment) — **unblocked**
 - Deployment Phase B → Deployment Phase A — **unblocked**
 
 ## Detailed Roadmaps
 
 | Document | Scope |
 |----------|-------|
+| [ROADMAP-RECOMMENDER.md](ROADMAP-RECOMMENDER.md) | Embedding-based recommendation system architecture and phases |
 | [ROADMAP-FRONTEND.md](ROADMAP-FRONTEND.md) | React SPA phases, components, testing |
 | [ROADMAP-BACKEND.md](ROADMAP-BACKEND.md) | FastAPI endpoints, auth, security hardening |
-| [ROADMAP-PIPELINE.md](ROADMAP-PIPELINE.md) | Scraper + Dagster ETL + embeddings + recommender training |
+| [ROADMAP-PIPELINE.md](ROADMAP-PIPELINE.md) | Scraper + Dagster ETL + embedding pipeline |
 | [ROADMAP-DEPLOY.md](ROADMAP-DEPLOY.md) | Local dev stack + LAN server deployment + backup/recovery |
 
 ## Archived Documents
