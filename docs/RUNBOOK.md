@@ -5,9 +5,9 @@
 | Service | Port | Image / Runtime | Health Check |
 |---------|------|-----------------|-------------|
 | PostgreSQL (pgvector) | 5432 | `pgvector/pgvector:pg18` | `pg_isready -U bookuser -d bookdb` |
-| FastAPI Backend | 8000 (compose) / 80 (Makefile) | Python 3.12 (Podman) | `GET /health` → `{"status": "ok", "database": "connected"}` |
+| FastAPI Backend | 8000 (compose) / 80 (Makefile) | Python 3.12 (Podman) | `GET /health` -> `{"status": "ok", "database": "connected"}` |
 | Scrapyd | 6800 | Python Alpine (Podman) | `GET http://localhost:6800/` |
-| Dagster Code Server | 4000 | Python 3.12 (Podman) | `nc -z localhost 4000` |
+| Dagster Code Server | 4000 | Python 3.12 (Podman) | `dagster api grpc-health-check --port 4000` |
 | Dagster Webserver | 3000 | Python 3.12 (Podman) | `GET http://localhost:3000/server_info` |
 | Dagster Daemon | — | Python 3.12 (Podman) | `dagster-daemon liveness-check` |
 | Frontend (nginx) | 8080 | nginx:alpine (Podman) | `GET http://localhost:8080/` |
@@ -114,8 +114,8 @@ podman compose up dagster-code dagster-webserver dagster-daemon -d
 ### Asset Graph
 
 ```
-crawl_books → raw_books → validate_raw_books → cleaned_books → load_books
-                            ↘ validation_errors
+crawl_books -> raw_books -> validate_raw_books -> cleaned_books -> load_books -> review_embeddings -> book_embeddings
+                              \-> validation_errors
 ```
 
 - **crawl_books**: Triggers Scrapyd spider and polls for completion (used by `crawl_and_load` job)
@@ -123,6 +123,8 @@ crawl_books → raw_books → validate_raw_books → cleaned_books → load_book
 - **validate_raw_books**: Validates required fields, splits into valid records + error records
 - **cleaned_books**: Transforms dates, ratings, fiction classification, critic names
 - **load_books**: Upserts books, authors, publishers, genres, critics, publications, and reviews into PostgreSQL
+- **review_embeddings**: Encodes review text into 384-dim dense vectors using sentence-transformers (incremental, skips rows that already have embeddings)
+- **book_embeddings**: Averages review embeddings per book to produce book-level embeddings (incremental)
 
 **Data source path** (configured in compose.yaml as volume mount):
 ```
@@ -130,10 +132,44 @@ Podman volume: litmatch_shared_scraper_output
 Container path: /data/raw/books.jsonl
 ```
 
+### Jobs
+
+- **etl_pipeline**: Full ETL from raw_books through embeddings (no crawl)
+- **crawl_and_load**: Crawl + full ETL including embeddings
+- **embedding_pipeline**: Generate review and book embeddings only (useful for re-embedding without re-running ETL)
+
+### Schedules
+
+- **weekly_etl_schedule**: Runs `crawl_and_load` every Sunday at midnight UTC (default: STOPPED, must be activated in Dagster UI)
+
 ### Sensors
 
 - **data_freshness_sensor**: Ongoing file-watch, triggers ETL when `books.jsonl` is modified
 - **startup_crawl_sensor**: Fires exactly once on first deployment when Scrapyd is healthy, triggers a full crawl-and-load pipeline to seed the database
+
+### Embedding Pipeline
+
+The embedding assets run as part of the ETL pipeline (after `load_books`):
+
+1. **review_embeddings**: Uses `sentence-transformers` (`all-MiniLM-L6-v2`) to encode review text into 384-dim vectors. Processes in batches of 256. Incremental: skips reviews that already have embeddings.
+2. **book_embeddings**: Computes per-book embeddings by averaging all review embeddings for each book using numpy. Incremental: skips books that already have embeddings.
+
+The embedding model is configured via the `EMBEDDING_MODEL_NAME` environment variable (default: `all-MiniLM-L6-v2`). Only allowlisted models are accepted to prevent arbitrary code execution from untrusted HuggingFace Hub models.
+
+To re-generate embeddings without running the full ETL:
+```bash
+# Via Dagster UI: materialize the embedding_pipeline job
+# Or trigger via GraphQL API
+```
+
+## Recommendation Engine
+
+The `/recommendations/` API endpoint provides personalized book recommendations:
+
+1. Computes a user taste embedding as a weighted average of rated book embeddings
+2. Uses pgvector `cosine_distance` to find nearest books
+3. Falls back to popular books (by average critic rating) for users with fewer than 5 ratings
+4. Supports category filtering: `?category=fiction`, `?category=nonfiction`, or `?category=all`
 
 ## Scraper (Scrapy via Scrapyd)
 
@@ -252,6 +288,28 @@ rm -f etl.log
 4. Check that `DATABASE_URL` in `.env` is correct (use `db` as hostname for compose)
 5. Verify pgvector extension is installed: `podman compose exec db psql -U bookuser -d bookdb -c "SELECT * FROM pg_extension WHERE extname = 'vector'"`
 
+### Embedding generation fails
+
+**Symptom**: `review_embeddings` or `book_embeddings` asset materialization fails in Dagster
+
+**Fix**:
+1. Check Dagster run logs for the specific error message
+2. Verify `sentence-transformers` and `torch` are installed: `uv run python -c "from sentence_transformers import SentenceTransformer; print('OK')"`
+3. Ensure `EMBEDDING_MODEL_NAME` is in the allowlist (`all-MiniLM-L6-v2`)
+4. Check available memory — the model requires ~100MB RAM
+5. Both assets have `retry_policy` with 1 retry and 60s delay; check if the retry also failed
+6. To re-run embeddings only: materialize the `embedding_pipeline` job in Dagster UI
+
+### Recommendations returning empty or popular-only results
+
+**Symptom**: `/recommendations/` endpoint returns popular books instead of personalized ones
+
+**Fix**:
+1. User needs at least 5 ratings for personalized recommendations (fewer falls back to popular)
+2. Verify book embeddings exist: `podman compose exec db psql -U bookuser -d bookdb -c "SELECT count(*) FROM book WHERE embedding IS NOT NULL;"`
+3. If no embeddings, run the embedding pipeline in Dagster UI
+4. Check that rated books have embeddings — books without review text won't have embeddings
+
 ## Rollback Procedures
 
 ### Backend rollback
@@ -348,6 +406,10 @@ podman compose exec db pg_isready -U bookuser -d bookdb
 # Count books in database
 podman compose exec db psql -U bookuser -d bookdb -c "SELECT count(*) FROM book;"
 
+# Check embedding coverage
+podman compose exec db psql -U bookuser -d bookdb -c "SELECT count(*) AS total_books, count(embedding) AS with_embeddings FROM book;"
+podman compose exec db psql -U bookuser -d bookdb -c "SELECT count(*) AS total_reviews, count(embedding) AS with_embeddings FROM review;"
+
 # Check database connections
 podman compose exec db psql -U bookuser -d bookdb -c "SELECT count(*) FROM pg_stat_activity WHERE datname = 'bookdb';"
 
@@ -371,6 +433,12 @@ curl -X POST http://localhost:8000/auth/register \
 
 # Test book search
 curl "http://localhost:8000/books/?limit=5"
+
+# Test recommendations (requires auth token)
+TOKEN=$(curl -s -X POST http://localhost:8000/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username": "test", "password": "testpass123"}' | python -c "import sys,json; print(json.load(sys.stdin)['access_token'])")
+curl -H "Authorization: Bearer $TOKEN" "http://localhost:8000/recommendations/?category=all"
 ```
 
 ### Dagster status
@@ -380,6 +448,7 @@ Check the Dagster UI at http://localhost:3000 for:
 - Run logs and error details
 - Pipeline scheduling status
 - Sensor status (data_freshness_sensor, startup_crawl_sensor)
+- Embedding pipeline progress (review_embeddings, book_embeddings)
 
 ```bash
 # Check if Dagster webserver is responding
@@ -428,6 +497,7 @@ podman compose exec db psql -U bookuser -d bookdb -c "VACUUM ANALYZE;"
 - Asset materialization history is stored in the Dagster instance database
 - Consider increasing parallel asset execution in `dagster.yaml`
 - Monitor run queue length in Dagster UI
+- Embedding assets have retry policies (1 retry, 60s delay) for transient failures
 
 ## Environment Variables Reference
 
@@ -444,6 +514,7 @@ See `.env.example` for all available environment variables.
 - `REFRESH_COOKIE_PATH` (default: `/api/auth/refresh`)
 - `PROXY_TOKEN` (required only for scraping)
 - `RAW_DATA_DIR` (set automatically in compose.yaml)
+- `EMBEDDING_MODEL_NAME` (default: `all-MiniLM-L6-v2`)
 
 ## Troubleshooting Checklist
 

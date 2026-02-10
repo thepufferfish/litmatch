@@ -46,6 +46,7 @@ cp .env.example .env
 | `PROXY_TOKEN` | Rotating proxy service token for scraper | For scraping | — |
 | `SCRAPYD_URL` | Scrapyd API URL (used by Dagster to trigger crawl jobs; `scrapyd` for compose, `localhost` for local dev) | No | `http://scrapyd:6800` |
 | `RAW_DATA_DIR` | Path to raw data directory (set automatically in compose.yaml) | No | `/data/raw` |
+| `EMBEDDING_MODEL_NAME` | Sentence-transformers model for review embeddings | No | `all-MiniLM-L6-v2` |
 
 **Connection String Notes:**
 - For compose deployment: use `db` as hostname (container name)
@@ -195,6 +196,22 @@ Tests are in `tests/dagster/`:
 - `test_startup_crawl_sensor.py` — Startup crawl sensor state machine tests
 - `test_transforms.py` — Data transformation tests
 - `test_validation.py` — Input validation tests
+- `test_embedding_asset.py` — Review embedding asset tests
+- `test_book_embedding_asset.py` — Book embedding asset tests
+- `test_embedding_resource.py` — EmbeddingModelResource tests
+- `test_schedule.py` — Weekly ETL schedule tests
+- `test_retry_policy.py` — Asset retry policy tests
+- `test_metadata_emission.py` — Asset metadata emission tests
+- `test_quarantine.py` — Quarantine tests
+
+### Backend Tests
+
+```bash
+uv run pytest backend/tests/ -v
+```
+
+Tests are in `backend/tests/`:
+- `test_recommendations.py` — Recommendation engine tests (embedding computation, nearest-book search, popular fallback)
 
 ### Integration Tests
 
@@ -216,7 +233,7 @@ Tests are in `tests/integration/`:
 
 **Integration test configuration (`compose.test.yaml`):**
 - Uses isolated test volumes: `postgres_data_test`, `dagster_storage_test` (independent from dev volumes)
-- Mounts `./tests/integration/fixtures` → `/data/raw` (same as production path)
+- Mounts `./tests/integration/fixtures` -> `/data/raw` (same as production path)
 - Sets `SCRAPYD_URL=http://scrapyd-disabled:6800` (unreachable host) to keep startup_crawl_sensor idle
 - Sets `RAW_DATA_DIR=/data/raw` (no nested `/raw` subdirectory) to match fixture mount
 - Disables `frontend` and `scrapyd` services (not needed for integration tests)
@@ -249,31 +266,36 @@ litmatch/
       main.py           # API endpoints + CORS + rate limiting
       auth.py           # JWT access/refresh token logic
       config.py         # Environment variable configuration
+      queries.py        # Shared SQL query builders (rating subquery)
       rate_limit.py     # slowapi rate limiter setup
-    db/models.py        # SQLModel database models
+      recommendations.py  # Embedding-based recommendation engine
+    db/models.py        # SQLModel database models (with pgvector columns)
     database.py         # DB initialization + pgvector setup
     entrypoint.sh       # Container startup script (runs DB init)
+    tests/
+      test_recommendations.py  # Recommendation engine unit tests
     Dockerfile          # Backend container
   frontend/             # React SPA (Vite + TypeScript + Tailwind v4)
     src/
       api/client.ts     # Axios HTTP client
-      components/       # Reusable UI components (BookCard, SearchBar, etc.)
+      components/       # Reusable UI components (BookCard, SearchBar, RecommendationGrid, etc.)
       context/          # React contexts (AuthContext for JWT auth)
-      hooks/            # TanStack React Query hooks (useBooks, useGenres, etc.)
-      pages/            # Route page components (BrowsePage, BookDetailPage, etc.)
+      hooks/            # TanStack React Query hooks (useBooks, useGenres, useRecommendations, etc.)
+      pages/            # Route page components (BrowsePage, BookDetailPage, ProfilePage, etc.)
       types/            # TypeScript type definitions
       utils/            # Utility functions (slugify, validation)
     Dockerfile          # Frontend nginx container
-  recommender/          # SVD collaborative filtering (surprise)
+  recommender/          # SVD collaborative filtering prototype (surprise)
   scraper/              # Scrapy project for bookmarks.reviews
   src/litmatch/         # Dagster ETL pipeline
     defs/
-      assets/           # Dagster asset definitions (extract, transform, load, validate)
-      resources/        # Dagster resources (database, path, scrapyd)
+      assets/           # Dagster asset definitions (extract, transform, load, validate, embedding)
+      resources/        # Dagster resources (database, path, scrapyd, embedding_model)
+      schedules/        # Dagster schedules (weekly_etl_schedule)
       sensors/          # Dagster sensors (data freshness, startup ETL seed)
       utils/            # ETL utility functions (db_operations, transforms, validation)
   tests/
-    dagster/            # Unit tests for Dagster assets, transforms, validation, sensors
+    dagster/            # Unit tests for Dagster assets, transforms, validation, sensors, embeddings
     integration/        # Integration tests (require running compose stack)
   compose.yaml          # Podman Compose services
   compose.test.yaml     # Override for integration tests
@@ -291,6 +313,25 @@ The frontend Vite dev server proxies `/api` requests to the backend:
 
 The `/api` prefix is **stripped** before forwarding. Backend routes have **no** `/api` prefix.
 
+## REST API Endpoints
+
+| Method | Path | Description | Auth |
+|--------|------|-------------|------|
+| `GET` | `/health` | Health check (database connectivity) | No |
+| `POST` | `/auth/register` | Register new user | No |
+| `POST` | `/auth/login` | Login (returns JWT) | No |
+| `POST` | `/auth/refresh` | Refresh access token | Cookie |
+| `POST` | `/auth/logout` | Logout (clears refresh cookie) | No |
+| `GET` | `/books/` | List books (paginated, sortable) | No |
+| `GET` | `/books/search` | Search books by title/author | No |
+| `GET` | `/books/{book_id}` | Get book details | No |
+| `GET` | `/reviews/{book_id}` | Get reviews for a book | No |
+| `GET` | `/genres/` | List all genres | No |
+| `GET` | `/users/me` | Get current user profile | Yes |
+| `GET` | `/recommendations/` | Get personalized recommendations | Yes |
+| `GET` | `/ratings/` | Get user's ratings | Yes |
+| `POST` | `/ratings/` | Rate a book | Yes |
+
 ## Code Style
 
 - **Python**: PEP 8, type annotations on all function signatures, format with black/ruff
@@ -301,19 +342,21 @@ The `/api` prefix is **stripped** before forwarding. Backend routes have **no** 
 ## Database Schema
 
 PostgreSQL with pgvector extension. Key entities defined in `backend/db/models.py`:
-- **Book** — central entity (title, author, publisher, isbn, description, fiction flag)
+- **Book** — central entity (title, author, publisher, isbn, description, fiction flag, embedding vector)
 - **Author**, **Publisher** — one-to-many with Book
 - **Genre** — many-to-many with Book via BookGenreLink
-- **Review** — linked to Book, Critic, and Publication
+- **Review** — linked to Book, Critic, and Publication (with embedding vector)
 - **User**, **UserRating** — authentication and book ratings
+
+Both `Book.embedding` and `Review.embedding` are 384-dimensional pgvector columns (`Vector(384)`) used by the recommendation engine.
 
 ## ETL Pipeline (Dagster)
 
 ### Asset Graph
 
 ```
-crawl_books → raw_books → validate_raw_books → cleaned_books → load_books
-                            ↘ validation_errors
+crawl_books -> raw_books -> validate_raw_books -> cleaned_books -> load_books -> review_embeddings -> book_embeddings
+                              \-> validation_errors
 ```
 
 - **crawl_books**: Triggers Scrapyd spider and polls for completion (used by `crawl_and_load` job)
@@ -321,11 +364,35 @@ crawl_books → raw_books → validate_raw_books → cleaned_books → load_book
 - **validate_raw_books**: Validates required fields, splits into valid records + error records
 - **cleaned_books**: Transforms dates, ratings, fiction classification, critic names
 - **load_books**: Upserts books, authors, publishers, genres, critics, publications, and reviews into PostgreSQL
+- **review_embeddings**: Encodes review text into 384-dim vectors using sentence-transformers (incremental)
+- **book_embeddings**: Averages review embeddings per book to produce book-level embeddings (incremental)
+
+### Jobs
+
+- **etl_pipeline**: Full ETL from raw_books through embeddings (no crawl)
+- **crawl_and_load**: Crawl + full ETL including embeddings
+- **embedding_pipeline**: Generate review and book embeddings only
+
+### Schedules
+
+- **weekly_etl_schedule**: Runs `crawl_and_load` every Sunday at midnight UTC (default: STOPPED, must be activated in Dagster UI)
 
 ### Sensors
 
 - **data_freshness_sensor**: Ongoing file-watch, triggers ETL when `books.jsonl` is modified
 - **startup_crawl_sensor**: Fires exactly once on first deployment when Scrapyd is healthy, triggers a full crawl-and-load pipeline to seed the database
+
+## Recommendation Engine
+
+The recommendation system uses embedding-based cosine similarity via pgvector:
+
+1. **Review embeddings**: Generated by the `review_embeddings` Dagster asset using `sentence-transformers` (`all-MiniLM-L6-v2`, 384 dimensions)
+2. **Book embeddings**: Computed as the mean of a book's review embeddings by the `book_embeddings` asset
+3. **User taste embedding**: Computed at query time as a weighted average of rated book embeddings (weight = rating - 2, so 1-star is negative, 3+ is positive)
+4. **Nearest-book search**: Uses pgvector `cosine_distance` to find books closest to the user's taste embedding
+5. **Fallback**: Users with fewer than 5 ratings get popular books (by average critic rating) instead
+
+Category filtering (`fiction`/`nonfiction`/`all`) is applied at every stage.
 
 ## Network Architecture
 

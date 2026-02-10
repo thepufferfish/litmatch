@@ -6,8 +6,15 @@ A book discovery and recommendation platform. LitMatch scrapes literary review d
 
 ```
 Scraper (Scrapy) --> books.jsonl --> Dagster ETL --> PostgreSQL + pgvector
-                                                          |
-                                                    FastAPI Backend
+                                         |                |
+                                   Embedding Pipeline      |
+                                   (sentence-transformers) |
+                                         |                |
+                                         v                v
+                                    Review & Book    FastAPI Backend
+                                    Embeddings            |
+                                         |                v
+                                         +--------> Recommendations API
                                                           |
                                                     React Frontend
 ```
@@ -18,7 +25,8 @@ Scraper (Scrapy) --> books.jsonl --> Dagster ETL --> PostgreSQL + pgvector
 | ETL | Dagster | `src/litmatch/` |
 | Backend | FastAPI, SQLModel | `backend/` |
 | Frontend | React, Vite, TypeScript, Tailwind CSS | `frontend/` |
-| Recommender | SVD collaborative filtering (surprise) | `recommender/` |
+| Embeddings | sentence-transformers, pgvector | `src/litmatch/defs/assets/embedding.py` |
+| Recommender | Embedding-based + SVD collaborative filtering | `backend/app/recommendations.py`, `recommender/` |
 
 ## Quick Start
 
@@ -43,6 +51,7 @@ Copy `.env.example` to `.env` and adjust values:
 ```bash
 cp .env.example .env
 # Edit .env: set SECRET_KEY (openssl rand -hex 32) and POSTGRES_PASSWORD
+# Optional: EMBEDDING_MODEL_NAME (defaults to all-MiniLM-L6-v2)
 ```
 
 ### 3. Start services
@@ -132,6 +141,8 @@ make test-coverage
 | GET | `/genres/` | List all genres |
 | GET | `/ratings/` | Get ratings (filterable by user/book) |
 | POST | `/ratings/` | Create or update a rating |
+| GET | `/users/me` | Get current user profile (id, username, rating count) |
+| GET | `/recommendations/` | Get book recommendations (personalized or popular fallback) |
 
 API documentation is available at http://localhost:8000/docs when the backend is running.
 
@@ -139,11 +150,24 @@ API documentation is available at http://localhost:8000/docs when the backend is
 
 PostgreSQL with pgvector extension. Key entities defined in `backend/db/models.py`:
 
-- **Book** -- central entity (title, author, publisher, isbn, description, fiction flag)
+- **Book** -- central entity (title, author, publisher, isbn, description, fiction flag, 384-dim embedding)
 - **Author**, **Publisher** -- one-to-many with Book
 - **Genre** -- many-to-many with Book via BookGenreLink
-- **Review** -- linked to Book, Critic, and Publication
+- **Review** -- linked to Book, Critic, and Publication (384-dim embedding)
 - **User**, **UserRating** -- authentication and book ratings
+
+Embeddings are stored as pgvector columns on Book and Review, enabling cosine-distance similarity searches for recommendations.
+
+## Recommendation Engine
+
+LitMatch uses a two-tier recommendation strategy:
+
+1. **Personalized** (5+ ratings) -- Computes a weighted-average embedding from the user's rated books, then finds nearest books via pgvector cosine distance. Ratings are weighted (1-star = -1, 5-star = +3). Fiction and non-fiction recommendations are computed separately.
+2. **Popular fallback** (<5 ratings) -- Returns top-rated books by critic rating, excluding books the user has already rated. A progress bar on the profile page shows how many more ratings are needed.
+
+The embedding pipeline runs as part of the Dagster ETL:
+- **review_embeddings** -- Encodes review text into 384-dim vectors using `all-MiniLM-L6-v2` (incremental, batch size 256)
+- **book_embeddings** -- Averages review embeddings per book (incremental)
 
 ## Project Structure
 
@@ -154,7 +178,9 @@ litmatch/
       main.py             #   API endpoints + CORS + rate limiting
       auth.py             #   JWT access/refresh token logic
       config.py           #   Environment variable configuration
+      queries.py          #   Reusable SQL query helpers
       rate_limit.py       #   slowapi rate limiter setup
+      recommendations.py  #   Recommendation engine (embedding + popular fallback)
     db/models.py          #   SQLModel database models
     database.py           #   DB init + pgvector extension
     entrypoint.sh         #   Container startup script
@@ -162,23 +188,24 @@ litmatch/
   frontend/               # React SPA (Vite + TypeScript + Tailwind CSS v4)
     src/
       api/client.ts       #   Axios HTTP client
-      components/         #   BookCard, BookGrid, SearchBar, StarRating, etc.
+      components/         #   BookCard, BookGrid, SearchBar, StarRating, RecommendationGrid
       context/            #   AuthContext (JWT auth)
-      hooks/              #   TanStack React Query hooks (useBooks, useGenres, etc.)
-      pages/              #   BrowsePage, BookDetailPage, LoginPage, RegisterPage
+      hooks/              #   TanStack React Query hooks (useBooks, useGenres, useRecommendations, etc.)
+      pages/              #   BrowsePage, BookDetailPage, LoginPage, RegisterPage, ProfilePage
       types/              #   TypeScript type definitions
       utils/              #   Utility functions (slugify, validation)
   recommender/            # SVD collaborative filtering (surprise)
   scraper/                # Scrapy project (bookmarks.reviews)
   src/litmatch/           # Dagster ETL pipeline
     defs/
-      assets/             #   Asset definitions (crawl, extract, validate, transform, load)
-      resources/          #   Dagster resources (database, path, scrapyd)
+      assets/             #   Asset definitions (crawl, extract, validate, transform, load, embedding)
+      resources/          #   Dagster resources (database, path, scrapyd, embedding_model)
+      schedules/          #   Dagster schedules (weekly_etl)
       sensors/            #   Dagster sensors (data_freshness, startup_crawl)
       utils/              #   ETL utilities (db_operations, transforms, validation)
-      jobs.py             #   Job definitions (etl_pipeline, crawl_and_load)
+      jobs.py             #   Job definitions (etl_pipeline, crawl_and_load, embedding_pipeline)
   tests/
-    dagster/              #   Unit tests for Dagster assets, transforms, validation, sensors
+    dagster/              #   Unit tests for Dagster assets, transforms, validation, sensors, embeddings
     integration/          #   Integration tests (require running compose stack)
   compose.yaml            # Podman Compose services
   compose.test.yaml       # Override for integration tests
