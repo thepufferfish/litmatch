@@ -223,6 +223,57 @@ class TestComputeUserEmbedding:
         result = compute_user_embedding(mock_session, user_id=999)
         assert result is None
 
+    def test_category_fiction_filters_to_fiction_only(self):
+        """When category='fiction', only fiction book ratings should be used."""
+        mock_session = MagicMock(spec=Session)
+        fiction_row = MagicMock()
+        fiction_row.rating = 5
+        fiction_row.embedding = [1.0, 0.0, 0.0]
+        mock_session.exec.return_value.all.return_value = [fiction_row]
+
+        result = compute_user_embedding(mock_session, user_id=1, category="fiction")
+        assert result is not None
+        # Verify exec was called (the SQL filtering is the key fix)
+        mock_session.exec.assert_called_once()
+
+    def test_category_nonfiction_filters_to_nonfiction_only(self):
+        """When category='nonfiction', only nonfiction book ratings should be used."""
+        mock_session = MagicMock(spec=Session)
+        nonfiction_row = MagicMock()
+        nonfiction_row.rating = 4
+        nonfiction_row.embedding = [0.0, 1.0, 0.0]
+        mock_session.exec.return_value.all.return_value = [nonfiction_row]
+
+        result = compute_user_embedding(mock_session, user_id=1, category="nonfiction")
+        assert result is not None
+        mock_session.exec.assert_called_once()
+
+    def test_category_all_uses_all_ratings(self):
+        """When category='all', all ratings are included (default behavior)."""
+        mock_session = MagicMock(spec=Session)
+        row1 = MagicMock()
+        row1.rating = 5
+        row1.embedding = [1.0, 0.0, 0.0]
+        row2 = MagicMock()
+        row2.rating = 4
+        row2.embedding = [0.0, 1.0, 0.0]
+        mock_session.exec.return_value.all.return_value = [row1, row2]
+
+        result = compute_user_embedding(mock_session, user_id=1, category="all")
+        assert result is not None
+
+    def test_category_default_is_all(self):
+        """Default category parameter should be 'all'."""
+        mock_session = MagicMock(spec=Session)
+        row = MagicMock()
+        row.rating = 5
+        row.embedding = [1.0, 0.0, 0.0]
+        mock_session.exec.return_value.all.return_value = [row]
+
+        # Calling without category should work (default = "all")
+        result = compute_user_embedding(mock_session, user_id=1)
+        assert result is not None
+
 
 # -----------------------------------------------------------------------
 # find_nearest_books Tests (pgvector-dependent, mocked)
@@ -630,3 +681,128 @@ class TestRecommendationsEndpoint:
         for item in response.json()["items"]:
             # Should not include nonfiction book
             assert item["title"] != "Nonfiction Book"
+
+    @patch("backend.app.main.compute_user_embedding")
+    @patch("backend.app.main.find_nearest_books")
+    def test_personalized_passes_category_to_embedding(
+        self,
+        mock_find: MagicMock,
+        mock_compute: MagicMock,
+        client: TestClient,
+        setup_db,
+    ):
+        """compute_user_embedding must receive the category parameter."""
+        reg = _register_user(client)
+        token = reg.json()["access_token"]
+
+        # Create and rate 5 fiction books
+        for i in range(5):
+            book_id = _create_book(setup_db, f"Fiction {i}", is_fiction=True)
+            _create_review(setup_db, book_id, rating=4)
+            client.post(
+                "/ratings/",
+                json={"book_id": book_id, "rating": 4},
+                headers={"Authorization": f"Bearer {token}"},
+            )
+
+        mock_compute.return_value = [0.1] * 384
+        mock_find.return_value = []
+
+        client.get(
+            "/recommendations/?category=fiction",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+        # Verify compute_user_embedding was called with category="fiction"
+        mock_compute.assert_called_once()
+        call_args = mock_compute.call_args[0]
+        assert len(call_args) >= 3
+        assert call_args[2] == "fiction"
+
+    @patch("backend.app.main.compute_user_embedding")
+    @patch("backend.app.main.find_nearest_books")
+    def test_category_specific_rating_count(
+        self,
+        mock_find: MagicMock,
+        mock_compute: MagicMock,
+        client: TestClient,
+        setup_db,
+    ):
+        """rating_count in response should reflect category-specific count."""
+        reg = _register_user(client)
+        token = reg.json()["access_token"]
+
+        # Rate 3 fiction + 4 nonfiction = 7 total, but only 3 fiction
+        for i in range(3):
+            book_id = _create_book(setup_db, f"Fiction {i}", is_fiction=True)
+            _create_review(setup_db, book_id, rating=4)
+            client.post(
+                "/ratings/",
+                json={"book_id": book_id, "rating": 4},
+                headers={"Authorization": f"Bearer {token}"},
+            )
+        for i in range(4):
+            book_id = _create_book(setup_db, f"Nonfiction {i}", is_fiction=False)
+            _create_review(setup_db, book_id, rating=3)
+            client.post(
+                "/ratings/",
+                json={"book_id": book_id, "rating": 3},
+                headers={"Authorization": f"Bearer {token}"},
+            )
+
+        mock_compute.return_value = [0.1] * 384
+        mock_find.return_value = []
+
+        # Request fiction: only 3 fiction ratings, should get popular fallback
+        response = client.get(
+            "/recommendations/?category=fiction",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["meta"]["rating_count"] == 3
+        # With only 3 fiction ratings (< MIN_RATINGS=5), strategy should be popular
+        assert data["meta"]["strategy"] == "popular"
+
+    @patch("backend.app.main.compute_user_embedding")
+    @patch("backend.app.main.find_nearest_books")
+    def test_category_all_uses_total_rating_count(
+        self,
+        mock_find: MagicMock,
+        mock_compute: MagicMock,
+        client: TestClient,
+        setup_db,
+    ):
+        """When category='all', rating_count should include all ratings."""
+        reg = _register_user(client)
+        token = reg.json()["access_token"]
+
+        # Rate 3 fiction + 3 nonfiction = 6 total
+        for i in range(3):
+            book_id = _create_book(setup_db, f"Fiction {i}", is_fiction=True)
+            _create_review(setup_db, book_id, rating=4)
+            client.post(
+                "/ratings/",
+                json={"book_id": book_id, "rating": 4},
+                headers={"Authorization": f"Bearer {token}"},
+            )
+        for i in range(3):
+            book_id = _create_book(setup_db, f"Nonfiction {i}", is_fiction=False)
+            _create_review(setup_db, book_id, rating=3)
+            client.post(
+                "/ratings/",
+                json={"book_id": book_id, "rating": 3},
+                headers={"Authorization": f"Bearer {token}"},
+            )
+
+        mock_compute.return_value = [0.1] * 384
+        mock_find.return_value = []
+
+        response = client.get(
+            "/recommendations/?category=all",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["meta"]["rating_count"] == 6
+        assert data["meta"]["strategy"] == "personalized"

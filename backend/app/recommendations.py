@@ -53,23 +53,37 @@ def _compute_weighted_embedding(
 
 
 def compute_user_embedding(
-    session: Session, user_id: int
+    session: Session,
+    user_id: int,
+    category: CategoryFilter = "all",
 ) -> list[float] | None:
     """Fetch user's ratings with book embeddings and compute weighted average.
+
+    When *category* is ``"fiction"`` or ``"nonfiction"``, only ratings for
+    books matching that category are included so the embedding reflects the
+    user's taste within the requested category.
 
     Args:
         session: Active database session.
         user_id: The user whose embedding to compute.
+        category: Restrict to ``"fiction"``, ``"nonfiction"``, or ``"all"``.
 
     Returns:
         384-dim embedding vector, or None if no rated books have embeddings
         or all ratings are neutral (2 stars).
     """
-    rows = session.exec(
+    stmt = (
         select(UserRating.rating, Book.embedding)
         .join(Book, UserRating.book_id == Book.id)
         .where(UserRating.user_id == user_id)
-    ).all()
+    )
+
+    if category == "fiction":
+        stmt = stmt.where(Book.is_fiction == True)  # noqa: E712
+    elif category == "nonfiction":
+        stmt = stmt.where(Book.is_fiction == False)  # noqa: E712
+
+    rows = session.exec(stmt).all()
 
     ratings_with_embeddings = [(r.rating, r.embedding) for r in rows]
     return _compute_weighted_embedding(ratings_with_embeddings)

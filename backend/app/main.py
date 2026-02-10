@@ -494,11 +494,18 @@ def get_recommendations(
     Users with 5+ ratings receive personalized nearest-neighbor results
     based on their taste embedding.
     """
-    rated_rows = session.exec(
-        select(UserRating.book_id).where(
-            UserRating.user_id == current_user.id
+    rated_stmt = select(UserRating.book_id).where(
+        UserRating.user_id == current_user.id
+    )
+    if category == "fiction":
+        rated_stmt = rated_stmt.join(Book).where(
+            Book.is_fiction == True  # noqa: E712
         )
-    ).all()
+    elif category == "nonfiction":
+        rated_stmt = rated_stmt.join(Book).where(
+            Book.is_fiction == False  # noqa: E712
+        )
+    rated_rows = session.exec(rated_stmt).all()
     rated_book_ids = set(rated_rows)
     rating_count = len(rated_book_ids)
 
@@ -506,7 +513,9 @@ def get_recommendations(
     books: list[Book] = []
 
     if rating_count >= MIN_RATINGS:
-        user_embedding = compute_user_embedding(session, current_user.id)
+        user_embedding = compute_user_embedding(
+            session, current_user.id, category
+        )
         if user_embedding is not None:
             books = find_nearest_books(
                 session, user_embedding, rated_book_ids, category, limit
