@@ -21,12 +21,12 @@ LitMatch is a book discovery and recommendation platform with five components:
 | Backend | Phase 1 (Browse API) | DONE |
 | Backend | Phase 2 (JWT Auth & Ratings) | DONE |
 | Backend | Phase 2.5 (Browse enhancements) | DONE |
-| Backend | Phase 3 (Recommendations API) | NOT STARTED |
+| Backend | Phase 3 (Recommendations API) | DONE |
 | Backend | Phase 4 (Semantic search + optimization) | NOT STARTED |
 | Frontend | Phase 1 (Browse & Discover) | DONE |
 | Frontend | Phase 2 (Auth & Ratings) | DONE |
 | Frontend | Phase 2.5 (Browse enhancements) | DONE |
-| Frontend | Phase 3 (Recommendations & Profile) | NOT STARTED |
+| Frontend | Phase 3 (Recommendations & Profile) | DONE |
 | Frontend | Phase 4 (Semantic search UI) | NOT STARTED |
 | Recommender | Standalone SVD prototype | DONE (superseded by embedding approach) |
 | Deployment | Phase A (Local dev improvements) | DONE |
@@ -64,14 +64,14 @@ Dagster pipeline runs fully automated in Podman containers with sensor-driven ex
 - Health checks and startup ordering for all services
 - Integration test suite with `compose.test.yaml`
 
-**Remaining enhancements (optional):**
-- Weekly schedule (currently event-driven only via sensors)
-- Asset metadata emission for Dagster UI (record counts, rates)
-- Retry policies on `load_books`
-- Quarantine JSONL file output (validation errors captured in-memory but not persisted)
+**All optional enhancements completed:**
+- Weekly schedule (`crawl_and_load` every Sunday at midnight UTC, default STOPPED)
+- Asset metadata emission for Dagster UI (record counts, validation rates)
+- Retry policies on `load_books` (max 2 retries, exponential backoff)
+- Quarantine JSONL file output (timestamped files with error annotations)
 - See: [Pipeline Roadmap](ROADMAP-PIPELINE.md)
 
-### Milestone 4: Personalized Recommendations — IN PROGRESS
+### Milestone 4: Personalized Recommendations — MOSTLY DONE
 
 Users receive book recommendations based on their ratings, powered by sentence-transformer embeddings and pgvector nearest-neighbor search. Replaces the standalone SVD prototype with a fully integrated embedding-based system.
 
@@ -80,14 +80,21 @@ Users receive book recommendations based on their ratings, powered by sentence-t
 **Implementation phases** (see [Recommender Roadmap](ROADMAP-RECOMMENDER.md) for full details):
 1. Review embeddings (Dagster asset + DB schema) — Pipeline Phase 3a — **DONE**
 2. Book embeddings (averaged review embeddings) — Pipeline Phase 3b — **DONE**
-3. User embeddings + recommendation API — Backend Phase 3
-4. Fiction/non-fiction separation + frontend — Frontend Phase 3
+3. User embeddings + recommendation API — Backend Phase 3 — **DONE**
+4. Fiction/non-fiction separation + frontend — Frontend Phase 3 — **DONE**
 5. Semantic search + optimization — Backend Phase 4 + Frontend Phase 4
 
-**Requires:**
+**Completed:**
 - Pipeline: `review_embeddings` + `book_embeddings` Dagster assets, `EmbeddingModelResource`
-- Backend: `GET /recommendations/` endpoint (auth required), `GET /users/me`, `GET /books/semantic-search`
-- Frontend: ProfilePage with fiction/nonfiction tabs, `useRecommendations` hook, semantic search toggle
+- Backend: `GET /recommendations/` endpoint (auth required, category filter, rate limited), `GET /users/me`
+- Frontend: ProfilePage with fiction/nonfiction tabs, `useRecommendations` hook, `RecommendationGrid` component
+- User embeddings filtered by category (fiction/nonfiction) for more targeted recommendations
+- Weekly schedule updated to trigger `crawl_and_load` instead of `etl_pipeline`
+
+**Remaining:**
+- Backend Phase 4: `GET /books/semantic-search` endpoint
+- Frontend Phase 4: Semantic search toggle in SearchBar
+- Integration tests for recommendation endpoints
 - See: [Recommender Roadmap](ROADMAP-RECOMMENDER.md), [Backend Roadmap](ROADMAP-BACKEND.md), [Frontend Roadmap](ROADMAP-FRONTEND.md), [Pipeline Roadmap](ROADMAP-PIPELINE.md)
 
 ### Milestone 5: LAN Deployment — PARTIALLY DONE
@@ -132,10 +139,10 @@ Scraper ─────────────┐
 ```
 
 **Key dependency chains:**
-- Frontend Phase 3 → Backend Phase 3 (recommendations endpoint)
+- ~~Frontend Phase 3 → Backend Phase 3 (recommendations endpoint)~~ — **resolved, both DONE**
 - Frontend Phase 4 → Backend Phase 4 (semantic search endpoint)
-- Backend Phase 3 → Pipeline Phase 3 (review + book embeddings)
-- Pipeline Phase 3 (embeddings) → Pipeline Phase 2 (Podman deployment) — **unblocked**
+- ~~Backend Phase 3 → Pipeline Phase 3 (review + book embeddings)~~ — **resolved, both DONE**
+- ~~Pipeline Phase 3 (embeddings) → Pipeline Phase 2 (Podman deployment)~~ — **resolved, both DONE**
 - Deployment Phase B → Deployment Phase A — **unblocked**
 
 ## Detailed Roadmaps

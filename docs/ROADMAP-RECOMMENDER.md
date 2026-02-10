@@ -15,7 +15,7 @@ Five implementation phases, each independently shippable:
 | Phase 1 | Review embeddings (Dagster asset + DB schema) — **DONE** | Existing ETL pipeline |
 | Phase 2 | Book embeddings (averaged review embeddings) — **DONE** | Phase 1 |
 | Phase 3 | User embeddings + recommendation API — **DONE** | Phase 2 |
-| Phase 4 | Fiction/non-fiction separation + frontend | Phase 3 |
+| Phase 4 | Fiction/non-fiction separation + frontend — **DONE** | Phase 3 |
 | Phase 5 | Precomputation, caching, and optimization | Phase 4 |
 
 ---
@@ -1016,87 +1016,61 @@ def get_popular_books(
 - Re-running is idempotent
 - The full `embedding_pipeline` job (review_embeddings -> book_embeddings) completes
 
-### Phase 3: User Embeddings + Recommendation API
+### Phase 3: User Embeddings + Recommendation API — DONE
 
 **Goal**: Serve personalized recommendations via FastAPI.
 
-**Duration estimate**: 3-4 days
+| Step | Description | Files | Status |
+|------|-------------|-------|--------|
+| 3.1 | Add `RecommendationResponse`, `UserProfile` models | `backend/db/models.py` | DONE |
+| 3.2 | Implement `compute_user_embedding()` helper | `backend/app/recommendations.py` | DONE |
+| 3.3 | Implement `get_popular_books()` fallback | `backend/app/recommendations.py` | DONE |
+| 3.4 | Implement `find_nearest_books()` | `backend/app/recommendations.py` | DONE |
+| 3.5 | Add `GET /recommendations/` endpoint | `backend/app/main.py` | DONE |
+| 3.6 | Add `GET /users/me` endpoint | `backend/app/main.py` | DONE |
+| 3.7 | Add sentence-transformers to pyproject.toml | `pyproject.toml` | DONE |
+| 3.8 | Update backend Dockerfile for torch | `backend/Dockerfile` | DONE |
+| 3.9 | Write unit tests for user embedding computation | — | NOT STARTED |
+| 3.10 | Write unit tests for fallback logic | — | NOT STARTED |
+| 3.11 | Write integration test for /recommendations/ endpoint | `tests/integration/test_backend_api.py` | NOT STARTED |
 
-| Step | Description | Files |
-|------|-------------|-------|
-| 3.1 | Add `RecommendationResponse`, `UserProfile` models | `backend/db/models.py` |
-| 3.2 | Implement `compute_user_embedding()` helper | `backend/app/recommendations.py` (new) |
-| 3.3 | Implement `get_popular_books()` fallback | `backend/app/recommendations.py` |
-| 3.4 | Implement `find_nearest_books()` | `backend/app/recommendations.py` |
-| 3.5 | Add `GET /recommendations/` endpoint | `backend/app/main.py` |
-| 3.6 | Add `GET /users/me` endpoint | `backend/app/main.py` |
-| 3.7 | Add sentence-transformers to pyproject.toml | `pyproject.toml` |
-| 3.8 | Update backend Dockerfile for torch | `backend/Dockerfile` |
-| 3.9 | Write unit tests for user embedding computation | `backend/tests/test_recommendations.py` (new) |
-| 3.10 | Write unit tests for fallback logic | `backend/tests/test_recommendations.py` |
-| 3.11 | Write integration test for /recommendations/ endpoint | `tests/integration/test_backend_api.py` |
+**Implementation note:** The actual API differs from the original spec. Instead of returning separate `fiction` and `nonfiction` arrays, the endpoint accepts a `category` query param and returns `items` for the requested category. The frontend makes separate calls per category. User embeddings are also filtered by category, so fiction recommendations reflect only fiction taste.
 
 **Success criteria**:
-- `GET /recommendations/` returns fiction and nonfiction arrays
-- Users with < 5 ratings get popular books (fallback)
-- Users with >= 5 ratings get personalized nearest-neighbor results
-- Response includes `meta.strategy` field
-- Already-rated books are excluded from results
-- Endpoint requires authentication (401 without token)
+- [x] `GET /recommendations/` returns items for requested category
+- [x] Users with < 5 ratings get popular books (fallback)
+- [x] Users with >= 5 ratings get personalized nearest-neighbor results
+- [x] Response includes `meta.strategy` field
+- [x] Already-rated books are excluded from results
+- [x] Endpoint requires authentication (401 without token)
+- [x] Rate limiting (15/min for recommendations, 30/min for /users/me)
 
-### Phase 4: Fiction/Non-Fiction Separation + Frontend
+### Phase 4: Fiction/Non-Fiction Separation + Frontend — DONE
 
 **Goal**: Frontend displays recommendations separated by category.
 
-**Duration estimate**: 2-3 days
+| Step | Description | Files | Status |
+|------|-------------|-------|--------|
+| 4.1 | Add `useRecommendations` hook | `frontend/src/hooks/useRecommendations.ts` | DONE |
+| 4.2 | Create ProfilePage with "My Ratings" + "Recommended" sections | `frontend/src/pages/ProfilePage.tsx` | DONE |
+| 4.3 | Add fiction/nonfiction tabs in recommendation section | `frontend/src/components/RecommendationGrid.tsx` | DONE |
+| 4.4 | Add `/profile` route (protected) | `frontend/src/App.tsx` | DONE |
+| 4.5 | Add "Recommended" link in authenticated header | `frontend/src/App.tsx` (AuthButtons) | DONE |
+| 4.6 | Write component tests | `ProfilePage.test.tsx`, `RecommendationGrid.test.tsx` | DONE |
+| 4.7 | Write hook tests | `frontend/src/hooks/useRecommendations.test.ts` | DONE |
 
-| Step | Description | Files |
-|------|-------------|-------|
-| 4.1 | Add `useRecommendations` hook | `frontend/src/hooks/useRecommendations.ts` |
-| 4.2 | Create ProfilePage with "My Ratings" + "Recommended" sections | `frontend/src/pages/ProfilePage.tsx` |
-| 4.3 | Add fiction/nonfiction tabs in recommendation section | `frontend/src/pages/ProfilePage.tsx` |
-| 4.4 | Add `/profile` route (protected) | `frontend/src/App.tsx` |
-| 4.5 | Add "Recommended" link in authenticated header | `frontend/src/components/Header.tsx` |
-| 4.6 | Write component tests | `frontend/src/pages/ProfilePage.test.tsx` |
-| 4.7 | Write hook tests | `frontend/src/hooks/useRecommendations.test.ts` |
-
-**Frontend hook** (`frontend/src/hooks/useRecommendations.ts`):
-
-```typescript
-import { useQuery } from "@tanstack/react-query";
-import api from "../api/client";
-
-interface RecommendationMeta {
-  user_ratings_count: number;
-  min_ratings_required: number;
-  strategy: "personalized" | "popular";
-}
-
-interface RecommendationResponse {
-  fiction: BookRead[];
-  nonfiction: BookRead[];
-  meta: RecommendationMeta;
-}
-
-export function useRecommendations(limit = 10) {
-  return useQuery<RecommendationResponse>({
-    queryKey: ["recommendations", limit],
-    queryFn: async () => {
-      const { data } = await api.get("/recommendations/", {
-        params: { limit },
-      });
-      return data;
-    },
-    staleTime: 5 * 60 * 1000, // 5 minutes
-  });
-}
-```
+**Implementation notes:**
+- The `useRecommendations` hook accepts `category`, `limit`, and `enabled` params (not just `limit`). The frontend makes separate calls per category tab.
+- A new `RecommendationGrid` component handles the tabbed fiction/nonfiction UI with strategy labels and loading skeletons.
+- Types defined in `frontend/src/types/index.ts`: `RecommendationCategory`, `RecommendationStrategy`, `RecommendationMeta`, `RecommendationResponse`, `UserProfile`.
+- ProfilePage includes a progress bar for users with < 5 ratings.
 
 **Success criteria**:
-- Profile page shows rated books grid and recommendation grid
-- Recommendations are separated into Fiction and Non-Fiction tabs
-- Empty states: "Rate more books" when < 5 ratings
-- "Recommended for You" strategy label (personalized vs popular)
+- [x] Profile page shows rated books grid and recommendation grid
+- [x] Recommendations are separated into Fiction and Non-Fiction tabs
+- [x] Empty states: progress bar when < 5 ratings
+- [x] Strategy label ("Based on your taste" / "Popular picks")
+- [x] 11 ProfilePage tests, 9 RecommendationGrid tests, 6 hook tests
 
 ### Phase 5: Semantic Search + Optimization
 
@@ -1162,17 +1136,27 @@ export function useRecommendations(limit = 10) {
 
 ### Unit Tests
 
-| Test File | What It Tests |
-|-----------|---------------|
-| `tests/dagster/test_embedding.py` | EmbeddingModelResource (mocked model), review_embeddings asset logic, book_embeddings averaging logic, incremental behavior (skip already-embedded) |
-| `backend/tests/test_recommendations.py` | `compute_user_embedding()` with various rating distributions (verifying signed-weight: negative ratings repel, neutral ratings ignored, positive ratings attract), `find_nearest_books()` with fiction/nonfiction filters, fallback logic when < MIN_RATINGS, edge cases (no embeddings, no rated books, all-neutral ratings) |
+| Test File | What It Tests | Status |
+|-----------|---------------|--------|
+| `tests/dagster/test_embedding_asset.py` | review_embeddings asset (encoding, batching, idempotency, error handling, NULL/empty text filtering) — 20+ tests | DONE |
+| `tests/dagster/test_book_embedding_asset.py` | book_embeddings asset (averaging logic, mathematical correctness, idempotency, engine disposal) — 18+ tests | DONE |
+| `tests/dagster/test_embedding_resource.py` | EmbeddingModelResource (lazy loading, allowlist, encoding) | DONE |
+| `backend/tests/test_recommendations.py` | `compute_user_embedding()`, `find_nearest_books()`, `get_popular_books()`, fallback logic, edge cases | NOT STARTED |
+
+### Frontend Tests
+
+| Test File | What It Tests | Status |
+|-----------|---------------|--------|
+| `frontend/src/pages/ProfilePage.test.tsx` | Auth redirect, loading, empty states, rated books, recommendation tabs — 11 tests | DONE |
+| `frontend/src/hooks/useRecommendations.test.ts` | Categories, params, query keys, disabled state — 6 tests | DONE |
+| `frontend/src/components/RecommendationGrid.test.tsx` | Tabs, strategy labels, loading, empty states, book cards — 9 tests | DONE |
 
 ### Integration Tests
 
-| Test File | What It Tests |
-|-----------|---------------|
-| `tests/integration/test_embeddings.py` | Full embedding pipeline against test database: insert test books/reviews, materialize review_embeddings + book_embeddings, verify vectors stored correctly |
-| `tests/integration/test_backend_api.py` (extended) | `GET /recommendations/` with test user who has rated books with embeddings, fiction/nonfiction separation, fallback for new users, auth requirement |
+| Test File | What It Tests | Status |
+|-----------|---------------|--------|
+| `tests/integration/test_embeddings.py` | Full embedding pipeline against test database | NOT STARTED |
+| `tests/integration/test_backend_api.py` (extended) | `GET /recommendations/` and `/users/me` endpoints | NOT STARTED |
 
 ### Test Fixtures
 
@@ -1289,7 +1273,7 @@ The existing recommender at `recommender/recommender.py`:
 - Is completely standalone with no database or API integration
 - Has a pinned `numpy<2` dependency that conflicts with modern sentence-transformers
 
-**Disposition**: The `recommender/` directory should be archived (moved to `archive/` or deleted) once Phase 3 is complete. The SVD approach is superseded by the embedding-based approach which:
+**Disposition**: The `recommender/` directory should be archived (moved to `archive/` or deleted) now that Phase 3 is complete. The SVD approach is superseded by the embedding-based approach which:
 1. Uses actual user ratings (not critic-as-user proxy)
 2. Leverages semantic content understanding (not just rating patterns)
 3. Is fully integrated into the Dagster pipeline and FastAPI backend
@@ -1299,17 +1283,17 @@ The existing recommender at `recommender/recommender.py`:
 
 ## 14. Open Questions
 
-These should be resolved before or during implementation:
-
 1. **Should the recommendation endpoint also return a similarity score?** A cosine distance could be normalized to a 0-100 "match %" for the UI. Adds minimal complexity.
 
-2. **Should books with `is_fiction IS NULL` be included in both fiction and nonfiction results, or excluded?** Currently some books lack fiction classification. Recommend: include in both categories until classification coverage improves.
+2. ~~**Should books with `is_fiction IS NULL` be included in both fiction and nonfiction results, or excluded?**~~ **Resolved by implementation**: The current `find_nearest_books()` and `get_popular_books()` functions filter by `is_fiction` when a category is specified. Books with NULL classification are excluded from category-specific results but included when `category="all"`.
 
-3. **Should the embedding pipeline run automatically after every ETL load, or on a separate schedule?** Recommend: chain it to `load_books` via Dagster dependency (already designed this way). No separate schedule needed.
+3. ~~**Should the embedding pipeline run automatically after every ETL load, or on a separate schedule?**~~ **Resolved**: Embedding assets depend on `load_books` via Dagster dependency graph. The `etl_pipeline` and `crawl_and_load` jobs both include embedding assets. No separate schedule needed.
 
-4. **What is the minimum number of embedded reviews a book needs to have a meaningful embedding?** A book with 1 review gets that review's embedding directly. A book with 10 reviews gets a richer average. Recommend: require at least 1 review (no minimum threshold beyond existence).
+4. ~~**What is the minimum number of embedded reviews a book needs to have a meaningful embedding?**~~ **Resolved**: No minimum threshold — a book with 1 review gets that review's embedding directly. Implemented as designed.
 
 5. ~~**Should negative ratings (1-2 stars) reduce a book's contribution to the user embedding, or should they be excluded entirely?**~~ **Resolved**: The signed-weight approach (rating - 2) handles this naturally. A 1-star rating contributes weight -1, actively repelling the user embedding from that book's direction. A 2-star rating is neutral (weight 0) and ignored. Ratings of 3+ attract.
+
+6. ~~**Should user embeddings be category-scoped or global?**~~ **Resolved by implementation**: User embeddings are filtered by category. When requesting fiction recommendations, only the user's fiction ratings contribute to the taste vector, and vice versa. This produces more targeted recommendations per category.
 
 ---
 
@@ -1317,15 +1301,11 @@ These should be resolved before or during implementation:
 
 This roadmap provides a complete architectural specification for the LitMatch recommender system MVP. The five-phase implementation plan delivers incremental value:
 
-- **Phase 1-2**: Embedding infrastructure (Dagster pipeline, database schema)
-- **Phase 3**: User-facing recommendations API
-- **Phase 4**: Frontend integration with fiction/non-fiction separation
-- **Phase 5**: Performance optimization and semantic search
+- **Phase 1-2**: Embedding infrastructure (Dagster pipeline, database schema) — **DONE**
+- **Phase 3**: User-facing recommendations API — **DONE**
+- **Phase 4**: Frontend integration with fiction/non-fiction separation — **DONE**
+- **Phase 5**: Performance optimization and semantic search — NOT STARTED
 
-The design prioritizes:
-- **Simplicity**: CPU-friendly models, on-demand computation, no external services
-- **Flexibility**: Review-level embeddings support future features
-- **Scalability**: Clear thresholds and upgrade paths as data grows
-- **Quality**: Professional critic reviews provide rich semantic signal
+**Current status**: Phases 1-4 are complete. The core recommendation system is fully functional with personalized and popular recommendation strategies, fiction/nonfiction category filtering, category-scoped user embeddings, and a complete frontend with ProfilePage, RecommendationGrid, and comprehensive tests.
 
-Total estimated implementation time: **11-16 days** across all phases.
+**Remaining work**: Phase 5 (semantic search endpoint, HNSW indexing, caching, embedding recomputation sensor) and integration tests for the recommendation endpoints.

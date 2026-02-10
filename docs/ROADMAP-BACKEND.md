@@ -77,36 +77,46 @@ Additions to the browse and detail APIs implemented after Phase 2.
 - Null dates sorted last via `nulls_last()`
 - Secondary sort by title for deterministic ordering
 
-## Phase 3: Recommendations API — PLANNED
+## Phase 3: Recommendations API — DONE
 
-**Depends on:** Pipeline Phase 3 (review + book embeddings stored in PostgreSQL)
+**Depends on:** Pipeline Phase 3 (review + book embeddings stored in PostgreSQL) — **resolved**
 
 **Reference:** [Recommender Roadmap](ROADMAP-RECOMMENDER.md) Phase 3
 
+### Endpoints
+
+| Method | Endpoint | Auth | Rate Limit | Description |
+|--------|----------|------|------------|-------------|
+| `GET` | `/users/me` | Bearer | 30/min | Current user's profile (id, username, rating_count) |
+| `GET` | `/recommendations/?limit={n}&category={cat}` | Bearer | 15/min | Personalized or popular book recommendations |
+
 ### 3.1 Recommendations Endpoint
 - `GET /recommendations/` scoped to current authenticated user
-- Requires Bearer auth
+- Requires Bearer auth, rate limited to 15/min
 - Computes user taste embedding on-demand via signed-weight average of rated book embeddings (weight = rating - 2)
-- Returns `RecommendationResponse` with separate fiction and nonfiction arrays
+- User embeddings filtered by category — only ratings for books matching the requested category (fiction/nonfiction) contribute to the embedding
 - Fallback: popular books (by average critic rating) when user has < 5 ratings
-- Response includes `meta.strategy` ("personalized" or "popular") and `meta.user_ratings_count`
 - Query params: `limit` (1-50, default 10), `category` ("fiction" | "nonfiction" | "all")
 - Already-rated books excluded from results
+- Response includes `meta.strategy` ("personalized" or "popular"), `meta.rating_count`, `meta.category`
 
 ### 3.2 User Profile Data
-- `GET /users/me` — return current user's profile (id, username, total_ratings)
-- Requires Bearer auth
+- `GET /users/me` — returns `UserProfile` (id, username, rating_count)
+- Requires Bearer auth, rate limited to 30/min
 
 ### 3.3 Recommendation Logic Module
-- New file: `backend/app/recommendations.py`
-- `compute_user_embedding()` — signed-weight average of book embeddings (rating - 2 offset; 1-star repels, 2-star neutral, 3+ attracts)
+- File: `backend/app/recommendations.py`
+- `_compute_weighted_embedding()` — signed-weight average of (rating, embedding) pairs
+- `compute_user_embedding()` — fetches user's ratings with book embeddings, filters by category, delegates to `_compute_weighted_embedding()`
 - `find_nearest_books()` — pgvector cosine distance search with fiction/nonfiction filter
-- `get_popular_books()` — fallback for cold-start users
+- `get_popular_books()` — fallback for cold-start users (by average critic rating)
 
 ### 3.4 Response Models
-- `RecommendationResponse` — `{fiction: BookRead[], nonfiction: BookRead[], meta: RecommendationMeta}`
-- `RecommendationMeta` — `{user_ratings_count, min_ratings_required, strategy}`
-- `UserProfile` — `{id, username, total_ratings}`
+- `RecommendationResponse` — `{items: BookRead[], meta: RecommendationMeta}`
+- `RecommendationMeta` — `{strategy, rating_count, category}`
+- `UserProfile` — `{id, username, rating_count}`
+
+**Note:** The response shape differs from the original roadmap spec. Instead of returning separate `fiction` and `nonfiction` arrays in a single response, the API returns `items` for the requested category. The frontend makes separate calls per category (fiction/nonfiction tabs).
 
 ### 3.5 Additional Endpoints (Potential)
 - `DELETE /ratings/{rating_id}` — remove a rating
@@ -114,6 +124,7 @@ Additions to the browse and detail APIs implemented after Phase 2.
 ### Design Decisions (Resolved)
 - **On-demand computation**: User embeddings computed at request time (sub-millisecond for 5-50 ratings). No precomputation or cache invalidation needed at current scale.
 - **Cold-start**: Users with < 5 ratings get popular books fallback.
+- **Category-scoped embeddings**: User embedding is filtered by fiction/nonfiction category, so fiction recommendations reflect only fiction taste and vice versa.
 - **No confidence score**: Cosine distance could be normalized to a match % in the future, but deferred for now.
 
 ## Phase 4: Semantic Search + Optimization — PLANNED
@@ -166,3 +177,4 @@ Additions to the browse and detail APIs implemented after Phase 2.
 | `test_search.py` | Search endpoint | DONE |
 | `test_backend_api.py` (integration) | Full REST API via running compose stack | DONE |
 | `test_database.py` (integration) | Schema initialization and connectivity | DONE |
+| `test_backend_api.py` recommendations (integration) | `/recommendations/` and `/users/me` endpoints | NOT STARTED |

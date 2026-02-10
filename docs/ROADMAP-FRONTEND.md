@@ -69,40 +69,52 @@ Additions to the browse and detail experience implemented after Phase 2.
 - Components: `SortSelect.tsx`, `CriticRatingBadge.tsx`, `ReviewList.tsx` (enhanced)
 - Updated: `BrowsePage.tsx`, `BookCard.tsx`, `BookDetailPage.tsx`
 
-## Phase 3: Recommendations & Profile — PLANNED
+## Phase 3: Recommendations & Profile — DONE
 
-**Depends on:** Backend Phase 3 (`GET /recommendations/`, `GET /users/me`)
+**Depends on:** Backend Phase 3 (`GET /recommendations/`, `GET /users/me`) — **resolved**
 
 **Reference:** [Recommender Roadmap](ROADMAP-RECOMMENDER.md) Phase 4
 
 ### 3.1 Profile Page
 - **Route:** `/profile` (protected — redirect to /login if unauthenticated)
 - **Sections:**
+  - "Your Library" header with rating count
   - "My Rated Books" — grid of books the user has rated, with their star rating shown
+  - Progress bar showing ratings needed for personalized recommendations (threshold: 5)
   - "Recommended for You" — recommendations separated into Fiction and Non-Fiction tabs
-- **Data:** `GET /ratings/` (scoped to current user), `GET /recommendations/` (auth required)
-- **Strategy display:** Shows "Personalized" or "Popular" label based on `meta.strategy`
+- **Data:** `GET /ratings/` (scoped to current user), `GET /recommendations/?category={cat}` (separate calls per tab)
+- **Strategy display:** Shows "Based on your taste" (personalized) or "Popular picks" (popular) label
 - **Empty states:**
   - No ratings: "You haven't rated any books yet"
-  - < 5 ratings: "Rate N more books to get personalized recommendations" (shows popular books as fallback)
+  - < 5 ratings: Progress bar showing how many more ratings needed
   - >= 5 ratings: Personalized recommendations with fiction/nonfiction tabs
-- **New hook:** `useRecommendations(limit)`
 
 ### 3.2 Navigation
-- Add "Recommended" link in authenticated header (links to `/profile`)
-- Add `/profile` route (protected) to `App.tsx`
+- "Recommended" link in authenticated header (links to `/profile`) in `AuthButtons` component
+- `/profile` route added to `App.tsx`
 
 ### 3.3 Recommendation Hook
 - **File:** `src/hooks/useRecommendations.ts`
+- Accepts `category`, `limit`, and `enabled` parameters
 - Uses TanStack React Query with 5-minute stale time
-- Calls `GET /recommendations/` with auth header
-- Returns `RecommendationResponse` with `fiction`, `nonfiction`, and `meta` fields
+- Calls `GET /recommendations/?category={cat}&limit={n}` with auth header
+- Returns `RecommendationResponse` with `items` and `meta` fields
+- Separate query keys per category for independent caching
 
-### Estimated New Files
+### 3.4 RecommendationGrid Component
+- **File:** `src/components/RecommendationGrid.tsx`
+- Fiction/nonfiction tabbed interface
+- Strategy labels display
+- Empty state per category
+- Loading skeleton
+- Responsive book card grid
+
+### Key Files
 - `src/pages/ProfilePage.tsx`
 - `src/hooks/useRecommendations.ts`
-- Update `App.tsx` (add `/profile` route, protect it)
-- Update `Header.tsx` (add "Recommended" link when authenticated)
+- `src/components/RecommendationGrid.tsx`
+- `src/types/index.ts` (RecommendationCategory, RecommendationStrategy, RecommendationMeta, RecommendationResponse, UserProfile types)
+- Updated: `App.tsx` (route + AuthButtons with "Recommended" link)
 
 ### Open Questions
 - Should profile show rating history with timestamps?
@@ -158,4 +170,7 @@ Additions to the browse and detail experience implemented after Phase 2.
 | `client.test.ts` | API client | DONE |
 | `slugify.test.ts` | Slug utility | DONE |
 | `validation.test.ts` | Form validation | DONE |
+| `ProfilePage.test.tsx` | ProfilePage (auth redirect, loading, empty states, rated books, recommendation tabs) | DONE |
+| `useRecommendations.test.ts` | Recommendations hook (categories, params, query keys) | DONE |
+| `RecommendationGrid.test.tsx` | RecommendationGrid component (tabs, strategy labels, loading, empty states) | DONE |
 | E2E tests (Playwright) | Critical user flows | NOT STARTED |

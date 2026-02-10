@@ -1,6 +1,6 @@
 # ETL Pipeline & Scraper Roadmap
 
-**Tech Stack:** Dagster + Scrapy/Scrapyd + PostgreSQL + pgvector + sentence-transformers (planned)
+**Tech Stack:** Dagster + Scrapy/Scrapyd + PostgreSQL + pgvector + sentence-transformers
 
 **Reference Spec:** [dagster-spec.md](../dagster-spec.md)
 
@@ -48,8 +48,8 @@ crawl_books ──> raw_books ──> validated_books + validation_errors ──
 | `validate_raw_books` multi-asset | `defs/assets/validate.py` | DONE |
 | `cleaned_books` asset | `defs/assets/transform.py` | DONE |
 | `load_books` asset | `defs/assets/load.py` | DONE |
-| `etl_pipeline` job (ETL-only) | `defs/jobs.py` | DONE |
-| `crawl_and_load` job (full pipeline) | `defs/jobs.py` | DONE |
+| `etl_pipeline` job (ETL + embeddings) | `defs/jobs.py` | DONE |
+| `crawl_and_load` job (crawl + ETL + embeddings) | `defs/jobs.py` | DONE |
 | `data_freshness_sensor` (file-watch) | `defs/sensors/data_freshness.py` | DONE |
 | `startup_crawl_sensor` (first-deploy seed) | `defs/sensors/startup_crawl.py` | DONE |
 | `definitions.py` wiring (all assets, jobs, sensors, resources) | `definitions.py` | DONE |
@@ -66,7 +66,7 @@ crawl_books ──> raw_books ──> validated_books + validation_errors ──
 | Metadata emission to all assets | DONE | All 5 assets emit structured metadata (record counts, validation rates, etc.) via `MaterializeResult` or `Output` |
 | Retry policy for `load_books` | DONE | `RetryPolicy(max_retries=2, delay=30, backoff=EXPONENTIAL)` added to load_books asset |
 | Write quarantine records to JSONL file | DONE | `validation_errors` persisted to timestamped JSONL files with microsecond-precision filenames |
-| Weekly ETL schedule | DONE | `weekly_etl_schedule` triggers `etl_pipeline` every Sunday at midnight UTC (default STOPPED) |
+| Weekly ETL schedule | DONE | `weekly_etl_schedule` triggers `crawl_and_load` every Sunday at midnight UTC (default STOPPED) |
 
 ### Phase 1 Success Criteria
 - [x] `dg dev` launches and shows the full asset graph (5 assets + 2 jobs)
@@ -104,7 +104,7 @@ crawl_books ──> raw_books ──> validated_books + validation_errors ──
 - [x] `podman compose up --build -d` starts all services including Dagster
 - [x] Dagster web UI accessible at http://localhost:3000
 - [x] Pipeline can be triggered from Dagster UI and completes
-- [ ] Weekly schedule activates and daemon executes it (sensors used instead)
+- [x] Weekly schedule triggers `crawl_and_load` every Sunday at midnight UTC (default STOPPED)
 - [x] Container restarts preserve run history (persistent volume)
 
 ## Pipeline Phase 3: Review + Book Embeddings — DONE
@@ -197,9 +197,10 @@ crawl_books -> raw_books -> validate_raw_books -> cleaned_books -> load_books
 | `test_scrapyd_resource.py` | ScrapydResource HTTP client | DONE |
 | `test_sensors.py` | Data freshness sensor | DONE |
 | `test_startup_crawl_sensor.py` | Startup crawl sensor state machine | DONE |
-| `test_embedding_asset.py` | review_embeddings asset (encoding, batching, idempotency, error handling) | DONE |
+| `test_embedding_asset.py` | review_embeddings asset (encoding, batching, idempotency, error handling, NULL/empty text filtering) — 20+ tests | DONE |
 | `test_embedding_resource.py` | EmbeddingModelResource (lazy loading, allowlist, encoding) | DONE |
-| `test_book_embedding_asset.py` | book_embeddings asset (averaging, idempotency, engine disposal, correctness) | DONE |
+| `test_book_embedding_asset.py` | book_embeddings asset (averaging, idempotency, engine disposal, correctness) — 18+ tests | DONE |
+| `test_schedule.py` | Weekly ETL schedule (triggers crawl_and_load) | DONE |
 | `test_asset_dependencies.py` | Asset dependency validation | DONE |
 | `compose.test.yaml` | Test database config with isolated volumes | DONE |
 | `test_container_health.py` | Service health and port reachability | DONE |
