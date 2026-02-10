@@ -10,7 +10,7 @@ import dagster as dg
 
 weekly_etl_schedule = dg.ScheduleDefinition(
     name="weekly_etl_schedule",
-    job_name="etl_pipeline",
+    job_name="crawl_and_load",
     cron_schedule="0 0 * * 0",
     description="Run the ETL pipeline every Sunday at midnight UTC.",
     default_status=dg.DefaultScheduleStatus.STOPPED,
