@@ -1,5 +1,5 @@
 import re
-from typing import Generic, TypeVar
+from typing import Generic, Literal, TypeVar
 
 from pgvector.sqlalchemy import Vector
 from pydantic import BaseModel, field_validator
@@ -216,3 +216,21 @@ class AuthResponse(SQLModel):
     access_token: str
     token_type: str
     user: UserPublic
+
+
+class UserProfile(BaseModel):
+    id: int
+    username: str
+    rating_count: int
+    model_config = {"from_attributes": True}
+
+
+class RecommendationMeta(BaseModel):
+    strategy: Literal["personalized", "popular"]
+    rating_count: int
+    category: Literal["fiction", "nonfiction", "all"]
+
+
+class RecommendationResponse(BaseModel):
+    items: list[BookRead]
+    meta: RecommendationMeta

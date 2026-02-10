@@ -27,6 +27,14 @@ from backend.app.config import (
     REFRESH_TOKEN_EXPIRE_DAYS,
 )
 from backend.app.rate_limit import limiter
+from backend.app.queries import build_rating_subquery
+from backend.app.recommendations import (
+    MIN_RATINGS,
+    CategoryFilter,
+    compute_user_embedding,
+    find_nearest_books,
+    get_popular_books,
+)
 from backend.db.models import (
     Author,
     AuthResponse,
@@ -35,10 +43,13 @@ from backend.db.models import (
     Genre,
     PaginatedResponse,
     RatingCreate,
+    RecommendationMeta,
+    RecommendationResponse,
     Review,
     ReviewRead,
     User,
     UserCreate,
+    UserProfile,
     UserPublic,
     UserRating,
 )
@@ -61,15 +72,7 @@ SortOption = Literal[
 
 def _build_rating_subquery():
     """Build a subquery that computes avg rating and review count per book."""
-    return (
-        select(
-            Review.book_id,
-            func.avg(Review.rating).label("avg_rating"),
-            func.count(Review.id).label("review_count"),
-        )
-        .group_by(Review.book_id)
-        .subquery()
-    )
+    return build_rating_subquery()
 
 
 def _apply_sort(stmt: expression.Select, sort: SortOption | None, rating_sub) -> expression.Select:
@@ -444,6 +447,90 @@ def read_reviews(*, session: Session = Depends(get_session), book_id: int):
 def read_genres(*, session: Session = Depends(get_session)):
     genres = session.exec(select(Genre)).all()
     return genres
+
+
+# ---------------------------------------------------------------------------
+# User Profile
+# ---------------------------------------------------------------------------
+
+@app.get("/users/me", response_model=UserProfile)
+@limiter.limit("30/minute")
+def get_user_profile(
+    request: Request,
+    *,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+):
+    """Return the authenticated user's profile with rating count."""
+    rating_count = session.exec(
+        select(func.count(UserRating.id)).where(
+            UserRating.user_id == current_user.id
+        )
+    ).one()
+    return UserProfile(
+        id=current_user.id,
+        username=current_user.username,
+        rating_count=rating_count,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Recommendations
+# ---------------------------------------------------------------------------
+
+@app.get("/recommendations/", response_model=RecommendationResponse)
+@limiter.limit("15/minute")
+def get_recommendations(
+    request: Request,
+    *,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+    category: CategoryFilter = Query(default="all"),
+    limit: int = Query(default=20, ge=1, le=100),
+):
+    """Return personalized or popular book recommendations.
+
+    Users with fewer than 5 ratings receive popular books (fallback).
+    Users with 5+ ratings receive personalized nearest-neighbor results
+    based on their taste embedding.
+    """
+    rated_rows = session.exec(
+        select(UserRating.book_id).where(
+            UserRating.user_id == current_user.id
+        )
+    ).all()
+    rated_book_ids = set(rated_rows)
+    rating_count = len(rated_book_ids)
+
+    strategy: Literal["personalized", "popular"] = "popular"
+    books: list[Book] = []
+
+    if rating_count >= MIN_RATINGS:
+        user_embedding = compute_user_embedding(session, current_user.id)
+        if user_embedding is not None:
+            books = find_nearest_books(
+                session, user_embedding, rated_book_ids, category, limit
+            )
+            strategy = "personalized"
+        else:
+            books = get_popular_books(
+                session, rated_book_ids, category, limit
+            )
+    else:
+        books = get_popular_books(
+            session, rated_book_ids, category, limit
+        )
+
+    items = _annotate_books_with_ratings(session, books)
+
+    return RecommendationResponse(
+        items=items,
+        meta=RecommendationMeta(
+            strategy=strategy,
+            rating_count=rating_count,
+            category=category,
+        ),
+    )
 
 
 # ---------------------------------------------------------------------------
