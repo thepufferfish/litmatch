@@ -98,3 +98,23 @@ export type BookSortOption =
   | "date_asc"
   | "rating_desc"
   | "reviews_desc";
+
+export type RecommendationCategory = "fiction" | "nonfiction" | "all";
+export type RecommendationStrategy = "personalized" | "popular";
+
+export interface RecommendationMeta {
+  strategy: RecommendationStrategy;
+  rating_count: number;
+  category: RecommendationCategory;
+}
+
+export interface RecommendationResponse {
+  items: Book[];
+  meta: RecommendationMeta;
+}
+
+export interface UserProfile {
+  id: number;
+  username: string;
+  rating_count: number;
+}

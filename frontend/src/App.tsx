@@ -7,6 +7,7 @@ import { BrowsePage } from "@/pages/BrowsePage";
 import { BookDetailPage } from "@/pages/BookDetailPage";
 import { LoginPage } from "@/pages/LoginPage";
 import { RegisterPage } from "@/pages/RegisterPage";
+import { ProfilePage } from "@/pages/ProfilePage";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -27,6 +28,12 @@ function AuthButtons() {
   if (isAuthenticated && user) {
     return (
       <div className="flex items-center gap-4">
+        <Link
+          to="/profile"
+          className="text-sm text-ink-light hover:text-leather transition-colors"
+        >
+          Recommended
+        </Link>
         <span className="text-sm text-ink-light">{user.username}</span>
         <button
           onClick={() => void logout()}
@@ -122,6 +129,7 @@ export default function App() {
                   <Route path="/books/:id" element={<BookDetailPage />} />
                   <Route path="/login" element={<LoginPage />} />
                   <Route path="/register" element={<RegisterPage />} />
+                  <Route path="/profile" element={<ProfilePage />} />
                   <Route path="*" element={<NotFoundPage />} />
                 </Routes>
               </ErrorBoundary>

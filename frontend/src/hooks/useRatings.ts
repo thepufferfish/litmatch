@@ -29,6 +29,10 @@ export function useSubmitRating() {
         queryKey: ["rating", { bookId: variables.book_id }],
         exact: false,
       });
+      void queryClient.invalidateQueries({ queryKey: ["recommendations"] });
+      void queryClient.invalidateQueries({ queryKey: ["userProfile"] });
+      void queryClient.invalidateQueries({ queryKey: ["userRatedBooks"] });
+      void queryClient.invalidateQueries({ queryKey: ["userRatings"] });
     },
   });
 }
