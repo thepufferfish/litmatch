@@ -18,6 +18,36 @@ from sqlmodel import SQLModel
 from litmatch.defs.resources.path import PathResource
 
 
+def _crawl_url_dispatching_get(job_id: str, states: list[str]) -> MagicMock:
+    """Create a mock httpx.get that dispatches based on URL for crawl tests."""
+    state_iter = iter(states)
+
+    def side_effect(url: str, **kwargs: object) -> MagicMock:
+        if "listjobs.json" in url:
+            state = next(state_iter)
+            response = MagicMock()
+            response.status_code = 200
+            pending = [{"id": job_id, "spider": "bookmarks"}] if state == "pending" else []
+            running = [{"id": job_id, "spider": "bookmarks"}] if state == "running" else []
+            finished = [{"id": job_id, "spider": "bookmarks"}] if state == "finished" else []
+            response.json.return_value = {
+                "status": "ok",
+                "pending": pending,
+                "running": running,
+                "finished": finished,
+            }
+            return response
+        if "/logs/" in url:
+            response = MagicMock()
+            response.status_code = 200
+            response.text = ""
+            response.content = b""
+            return response
+        raise ValueError(f"Unexpected URL: {url}")
+
+    return MagicMock(side_effect=side_effect)
+
+
 class TestRawBooksMetadata:
     """raw_books asset should emit metadata: record_count, skipped_count."""
 
@@ -628,15 +658,7 @@ class TestCrawlBooksMetadata:
             mock_response.json.return_value = {"status": "ok", "jobid": "meta-job-123"}
             mock_httpx.post.return_value = mock_response
 
-            list_response = MagicMock()
-            list_response.status_code = 200
-            list_response.json.return_value = {
-                "status": "ok",
-                "pending": [],
-                "running": [],
-                "finished": [{"id": "meta-job-123", "spider": "bookmarks"}],
-            }
-            mock_httpx.get.return_value = list_response
+            mock_httpx.get = _crawl_url_dispatching_get("meta-job-123", ["finished"])
 
             result = dg.materialize_to_memory(
                 [crawl_books],
@@ -661,15 +683,7 @@ class TestCrawlBooksMetadata:
             mock_response.json.return_value = {"status": "ok", "jobid": "out-job-456"}
             mock_httpx.post.return_value = mock_response
 
-            list_response = MagicMock()
-            list_response.status_code = 200
-            list_response.json.return_value = {
-                "status": "ok",
-                "pending": [],
-                "running": [],
-                "finished": [{"id": "out-job-456", "spider": "bookmarks"}],
-            }
-            mock_httpx.get.return_value = list_response
+            mock_httpx.get = _crawl_url_dispatching_get("out-job-456", ["finished"])
 
             result = dg.materialize_to_memory(
                 [crawl_books],

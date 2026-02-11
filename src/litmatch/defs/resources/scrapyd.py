@@ -3,6 +3,8 @@
 Provides HTTP methods to schedule spiders, check job status,
 and verify Scrapyd availability via its JSON API.
 """
+import re
+
 import httpx
 
 import dagster as dg
@@ -86,6 +88,54 @@ class ScrapydResource(dg.ConfigurableResource):
                 return state
 
         return "unknown"
+
+    _JOB_ID_PATTERN: re.Pattern[str] = re.compile(r"^[a-f0-9]{32}$")
+    _MAX_LOG_CHUNK_BYTES: int = 10 * 1024 * 1024  # 10 MB
+
+    def fetch_log(self, job_id: str, offset: int = 0) -> tuple[str, int]:
+        """Fetch spider log content from Scrapyd, starting at byte offset.
+
+        Retrieves the raw log file for a specific spider job. Uses HTTP
+        Range header to fetch only new content since the last read.
+
+        Args:
+            job_id: The Scrapyd job ID (32-char hex string).
+            offset: Byte offset to start reading from (0 = beginning).
+
+        Returns:
+            Tuple of (log_content, new_offset) where new_offset is the
+            byte position after the fetched content.
+
+        Raises:
+            ValueError: If job_id format is invalid or offset is negative.
+            httpx.HTTPStatusError: If the log endpoint returns an error
+                other than 404 or 416.
+        """
+        if not self._JOB_ID_PATTERN.match(job_id):
+            raise ValueError(f"Invalid job_id format: {job_id!r}")
+        if offset < 0:
+            raise ValueError(f"offset must be non-negative, got {offset}")
+
+        url = f"{self.base_url}/logs/{self.project}/{self.spider}/{job_id}.log"
+        headers: dict[str, str] = {}
+        if offset > 0:
+            headers["Range"] = f"bytes={offset}-"
+
+        response = httpx.get(url, headers=headers, timeout=30)
+
+        if response.status_code in (404, 416):
+            return ("", offset)
+
+        response.raise_for_status()
+
+        content_bytes = response.content
+        if len(content_bytes) > self._MAX_LOG_CHUNK_BYTES:
+            content_bytes = content_bytes[:self._MAX_LOG_CHUNK_BYTES]
+
+        return (
+            content_bytes.decode("utf-8", errors="replace"),
+            offset + len(content_bytes),
+        )
 
     def is_healthy(self) -> bool:
         """Check if Scrapyd is reachable and responding.
