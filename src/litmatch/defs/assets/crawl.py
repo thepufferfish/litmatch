@@ -124,6 +124,7 @@ def _execute_crawl(
 @dg.asset(
     description="Schedule a Scrapyd spider crawl and wait for it to finish.",
     kinds={"python", "scrapyd"},
+    tags={"dagster/max_runtime": 5*24*3600} # runs could take 5 days
 )
 def crawl_books(
     context: dg.AssetExecutionContext,
