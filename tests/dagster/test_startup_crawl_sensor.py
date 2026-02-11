@@ -43,7 +43,7 @@ class TestStartupCrawlSensorDefinition:
         targets = startup_crawl_sensor.targets
         assert len(targets) > 0
         job_names = [t.job_name for t in targets if hasattr(t, "job_name")]
-        assert "crawl_and_load" in job_names
+        assert "crawl" in job_names
 
     def test_sensor_has_minimum_interval(self) -> None:
         """The sensor should poll at a reasonable interval."""

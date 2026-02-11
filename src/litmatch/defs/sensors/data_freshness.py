@@ -1,62 +1,60 @@
-"""Data freshness sensor: watches books.jsonl for changes and triggers ETL.
+"""Staging data sensor: watches for new crawl data in the staging table.
 
-This sensor monitors the books.jsonl file's modification time and triggers
-the ETL pipeline job when the file has been updated since the last check.
-The cursor stores the last-seen mtime as a string for serialization.
+Triggers the ETL pipeline when new staging rows appear since the last check.
+The cursor stores the latest crawl_job_id that was processed.
 """
-import os
-
 import dagster as dg
 
 from litmatch.defs.jobs import etl_pipeline
-from litmatch.defs.resources.path import PathResource
-
-CURSOR_KEY = "last_mtime"
+from litmatch.defs.resources.database import DatabaseResource
+from litmatch.defs.utils.staging import ensure_staging_table, get_latest_crawl_job_id
 
 
 @dg.sensor(
-    name="data_freshness_sensor",
+    name="staging_data_sensor",
     job=etl_pipeline,
-    minimum_interval_seconds=30,
-    description="Watches books.jsonl for modifications and triggers the ETL pipeline.",
-    required_resource_keys=set(),
+    minimum_interval_seconds=60,
+    description="Watches the staging table for new crawl data and triggers ETL.",
 )
-def data_freshness_sensor(
+def staging_data_sensor(
     context: dg.SensorEvaluationContext,
-    path: PathResource,
+    database: DatabaseResource,
 ) -> dg.SensorResult:
-    """Evaluate whether books.jsonl has been modified since the last tick.
+    """Check if new crawl data exists in the staging table.
 
-    On first run (no cursor), triggers if the file exists.
-    On subsequent runs, triggers only if the file's mtime has changed.
-    If the file does not exist, skips without error.
+    Queries for the latest crawl_job_id. If it differs from the cursor
+    (last processed crawl), triggers a new ETL run.
 
     Args:
         context: Dagster sensor evaluation context (provides cursor).
-        path: PathResource providing the books.jsonl file path.
+        database: DatabaseResource providing the database engine.
 
     Returns:
-        SensorResult with a RunRequest if the file changed, or empty otherwise.
+        SensorResult with a RunRequest if new data found, or empty otherwise.
     """
-    jsonl_path = path.books_jsonl_path
+    engine = database.get_engine()
+    try:
+        ensure_staging_table(engine)
 
-    if not os.path.exists(jsonl_path):
-        context.log.info(f"File not found: {jsonl_path}. Skipping.")
-        return dg.SensorResult(run_requests=[], cursor=context.cursor)
+        latest_job_id = get_latest_crawl_job_id(engine)
 
-    current_mtime = os.path.getmtime(jsonl_path)
-    current_mtime_str = str(current_mtime)
+        if latest_job_id is None:
+            context.log.info("No data in staging table. Skipping.")
+            return dg.SensorResult(run_requests=[], cursor=context.cursor)
 
-    last_mtime_str = context.cursor
+        if context.cursor == latest_job_id:
+            context.log.info(
+                f"Staging data unchanged (job_id={latest_job_id}). Skipping."
+            )
+            return dg.SensorResult(run_requests=[], cursor=latest_job_id)
 
-    if last_mtime_str is not None and last_mtime_str == current_mtime_str:
-        context.log.info("books.jsonl unchanged. Skipping.")
-        return dg.SensorResult(run_requests=[], cursor=current_mtime_str)
-
-    context.log.info(
-        f"books.jsonl changed (mtime: {current_mtime_str}). Triggering ETL pipeline."
-    )
-    return dg.SensorResult(
-        run_requests=[dg.RunRequest(run_key=current_mtime_str)],
-        cursor=current_mtime_str,
-    )
+        context.log.info(
+            f"New staging data detected (job_id={latest_job_id}). "
+            "Triggering ETL pipeline."
+        )
+        return dg.SensorResult(
+            run_requests=[dg.RunRequest(run_key=latest_job_id)],
+            cursor=latest_job_id,
+        )
+    finally:
+        engine.dispose()

@@ -81,9 +81,9 @@ ROTATING_PROXY_CLOSE_SPIDER = False
 
 # Configure item pipelines
 # See https://docs.scrapy.org/en/latest/topics/item-pipeline.html
-#ITEM_PIPELINES = {
-#    "bookmarks.pipelines.BookmarksPipeline": 300,
-#}
+ITEM_PIPELINES = {
+    "bookmarks.pipelines.PostgresStagingPipeline": 300,
+}
 
 # Enable and configure the AutoThrottle extension (disabled by default)
 # See https://docs.scrapy.org/en/latest/topics/autothrottle.html
@@ -110,18 +110,18 @@ ROTATING_PROXY_CLOSE_SPIDER = False
 REQUEST_FINGERPRINTER_IMPLEMENTATION = "2.7"
 TWISTED_REACTOR = "twisted.internet.asyncioreactor.AsyncioSelectorReactor"
 FEED_EXPORT_ENCODING = "utf-8"
-FEEDS = {
-    "output/books.jsonl": {
-        'format': 'jsonl',
-        'store_empty': False,
-        'fields': None,
-        'indent': 4,
-        'item_export_kwargs': {
-           'export_empty_fields': True,
-        },
-        "overwrite": False
-    }
-}
+# FEEDS = {
+#     "output/books.jsonl": {
+#         'format': 'jsonl',
+#         'store_empty': False,
+#         'fields': None,
+#         'indent': 4,
+#         'item_export_kwargs': {
+#            'export_empty_fields': True,
+#         },
+#         "overwrite": False
+#     }
+# }
 
 LOG_APPEND = False
 LOG_LEVEL = "INFO"

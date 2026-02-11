@@ -12,7 +12,9 @@ RUN scrapyd-deploy --build-egg=bookmarks.egg
 
 FROM python:alpine
 
-# Install Scrapy dependencies - and any others for your project.
+# Install build dependencies, pip packages, then remove build deps and add runtime libs.
+
+COPY requirements.txt .
 
 RUN apk --no-cache add --virtual build-dependencies \
    gcc \
@@ -21,13 +23,16 @@ RUN apk --no-cache add --virtual build-dependencies \
    libressl-dev \
    libxml2-dev \
    libxslt-dev \
+   postgresql-dev \
  && pip install --no-cache-dir \
    scrapyd \
+ && pip install --no-cache-dir -r requirements.txt \
  && apk del build-dependencies \
  && apk add \
    libressl \
    libxml2 \
-   libxslt
+   libxslt \
+   libpq
 
 # Mount two volumes for configuration and runtime.
 
@@ -38,11 +43,6 @@ COPY ./scrapyd.conf /etc/scrapyd/
 RUN mkdir -p /src/eggs/bookmarks
 
 COPY --from=build-stage /workdir/bookmarks.egg /src/eggs/bookmarks/1.egg
-
-# Copy requirements.txt and install dependencies
-COPY requirements.txt .
-
-RUN pip install -r requirements.txt
 
 EXPOSE 6800
 

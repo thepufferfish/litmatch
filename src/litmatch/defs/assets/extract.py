@@ -1,61 +1,65 @@
-"""Extract asset: reads raw JSONL data from the scraper output.
+"""Extract asset: reads raw scraped data from the PostgreSQL staging table.
 
-This is the first asset in the ETL pipeline. It reads the books.jsonl file
-line by line, parsing each JSON line into a dict.
+This is the first asset in the ETL pipeline. It reads items from the
+raw_books_staging table for the most recent crawl.
 
-When used in the crawl_and_load job, this asset depends on crawl_books
-to ensure the spider finishes writing books.jsonl before extraction begins.
+When used in the crawl job, this asset depends on crawl_books
+to ensure the spider finishes writing to the staging table before
+extraction begins.
 """
-import json
-
 import dagster as dg
 
-from litmatch.defs.resources.path import PathResource
+from litmatch.defs.resources.database import DatabaseResource
+from litmatch.defs.utils.staging import (
+    ensure_staging_table,
+    fetch_latest_staged_items,
+)
 
 
 @dg.asset(
-    description="Raw book records extracted from books.jsonl",
-    kinds={"python"},
+    description="Raw book records extracted from the staging table",
+    kinds={"python", "postgres"},
     deps=["crawl_books"],
 )
 def raw_books(
     context: dg.AssetExecutionContext,
-    path: PathResource,
+    database: DatabaseResource,
 ) -> dg.Output[list[dict]]:
-    """Read and parse the books.jsonl file.
+    """Read raw book records from the staging table.
 
-    Each line is a JSON object representing one book with its reviews.
-    Malformed lines are logged and skipped.
+    Queries the raw_books_staging table for items from the most recent
+    crawl job. The staging table is created if it does not exist.
 
-    This asset depends on crawl_books when used in the crawl_and_load job,
+    This asset depends on crawl_books when used in the crawl job,
     ensuring the spider completes before extraction begins. In the etl_pipeline
     job (which excludes crawl_books), this asset runs independently.
 
     Args:
         context: Dagster asset execution context for logging.
-        path: PathResource providing the path to books.jsonl.
+        database: DatabaseResource providing a SQLAlchemy engine.
     """
-    filepath = path.books_jsonl_path
-    context.log.info(f"Reading JSONL from: {filepath}")
+    engine = database.get_engine()
+    try:
+        ensure_staging_table(engine)
+        crawl_job_id, data = fetch_latest_staged_items(engine)
 
-    data: list[dict] = []
-    skipped = 0
+        context.log.info(
+            f"Extracted {len(data)} records from staging table "
+            f"(crawl_job_id={crawl_job_id!r})"
+        )
 
-    with open(filepath, "r", encoding="utf-8") as f:
-        for line_number, line in enumerate(f, start=1):
-            try:
-                data.append(json.loads(line))
-            except json.JSONDecodeError:
-                context.log.warning(
-                    f"Skipping malformed JSON at line {line_number}: {line.strip()[:100]}"
-                )
-                skipped += 1
+        if not data:
+            context.log.warning(
+                "No records found in staging table. "
+                "Has the crawl spider run and written to raw_books_staging?"
+            )
 
-    context.log.info(f"Extracted {len(data)} records ({skipped} skipped)")
-    return dg.Output(
-        data,
-        metadata={
-            "record_count": len(data),
-            "skipped_count": skipped,
-        },
-    )
+        return dg.Output(
+            data,
+            metadata={
+                "record_count": len(data),
+                "crawl_job_id": crawl_job_id,
+            },
+        )
+    finally:
+        engine.dispose()

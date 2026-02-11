@@ -3,11 +3,14 @@
 These fixtures manage the lifecycle of the Podman compose test stack.
 The stack starts once per test session and is torn down at the end.
 """
+import json
 import os
 import subprocess
 
 import httpx
+import psycopg2
 import pytest
+from psycopg2.extras import Json
 
 from tests.integration.helpers import (
     BACKEND_URL,
@@ -32,6 +35,54 @@ def _stack_is_available() -> bool:
         return result.returncode == 0
     except (FileNotFoundError, subprocess.TimeoutExpired):
         return False
+
+
+def _seed_staging_table() -> None:
+    """Insert test fixture data into the staging table for integration tests."""
+    from dotenv import load_dotenv
+
+    env_file = os.path.join(os.path.dirname(__file__), "..", "..", ".env")
+    load_dotenv(env_file)
+
+    db_user = os.environ.get("POSTGRES_USER", "bookuser")
+    db_pass = os.environ.get("POSTGRES_PASSWORD", "changeme")
+    db_name = os.environ.get("POSTGRES_DB", "bookdb")
+
+    conn = psycopg2.connect(
+        host="localhost",
+        port=5432,
+        user=db_user,
+        password=db_pass,
+        dbname=db_name,
+    )
+    try:
+        with conn.cursor() as cur:
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS raw_books_staging (
+                    id SERIAL PRIMARY KEY,
+                    crawl_job_id VARCHAR(64) NOT NULL,
+                    item_data JSONB NOT NULL,
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                    url TEXT
+                )
+            """)
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_staging_crawl_job_id ON raw_books_staging (crawl_job_id)")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_staging_created_at ON raw_books_staging (created_at)")
+
+            fixture_path = os.path.join(os.path.dirname(__file__), "fixtures", "books.jsonl")
+            with open(fixture_path) as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    item = json.loads(line)
+                    cur.execute(
+                        "INSERT INTO raw_books_staging (crawl_job_id, item_data, url) VALUES (%s, %s, %s)",
+                        ("test-fixture-crawl", Json(item), item.get("url", "")),
+                    )
+            conn.commit()
+    finally:
+        conn.close()
 
 
 @pytest.fixture(scope="session")
@@ -60,6 +111,9 @@ def compose_stack():
 
         # Wait for Dagster webserver
         wait_for_http(f"{DAGSTER_URL}/server_info", timeout=120)
+
+        # Seed the staging table with fixture data
+        _seed_staging_table()
 
         yield {
             "backend_url": BACKEND_URL,

@@ -15,6 +15,7 @@ import pytest
 from sqlalchemy import create_engine
 from sqlmodel import SQLModel
 
+from litmatch.defs.resources.database import DatabaseResource
 from litmatch.defs.resources.path import PathResource
 
 
@@ -49,17 +50,24 @@ def _crawl_url_dispatching_get(job_id: str, states: list[str]) -> MagicMock:
 
 
 class TestRawBooksMetadata:
-    """raw_books asset should emit metadata: record_count, skipped_count."""
+    """raw_books asset should emit metadata: record_count, crawl_job_id."""
 
-    def test_emits_record_count_metadata(self, jsonl_file: str) -> None:
+    @patch("litmatch.defs.assets.extract.fetch_latest_staged_items")
+    @patch("litmatch.defs.assets.extract.ensure_staging_table")
+    def test_emits_record_count_metadata(self, mock_ensure, mock_fetch) -> None:
         """raw_books should include record_count in materialization metadata."""
         from litmatch.defs.assets.extract import raw_books
 
-        data_dir = os.path.dirname(jsonl_file)
+        mock_fetch.return_value = ("job-123", [
+            {"title": "Book 1", "author": "Author 1"},
+            {"title": "Book 2", "author": "Author 2"},
+        ])
+
+        db_resource = DatabaseResource(connection_string="postgresql://test:test@localhost/test")
 
         result = dg.materialize_to_memory(
             [raw_books],
-            resources={"path": PathResource(raw_data_dir=data_dir)},
+            resources={"database": db_resource},
         )
 
         assert result.success
@@ -67,52 +75,61 @@ class TestRawBooksMetadata:
         assert "record_count" in metadata
         assert metadata["record_count"] == 2
 
-    def test_emits_skipped_count_metadata(
-        self, jsonl_file_with_bad_line: str, tmp_path
-    ) -> None:
-        """raw_books should include skipped_count for malformed JSON lines."""
+    @patch("litmatch.defs.assets.extract.fetch_latest_staged_items")
+    @patch("litmatch.defs.assets.extract.ensure_staging_table")
+    def test_emits_crawl_job_id_metadata(self, mock_ensure, mock_fetch) -> None:
+        """raw_books should include crawl_job_id in materialization metadata."""
         from litmatch.defs.assets.extract import raw_books
 
-        # Rename the file to books.jsonl so PathResource finds it
-        books_path = os.path.join(str(tmp_path), "books.jsonl")
-        if not os.path.exists(books_path):
-            os.rename(jsonl_file_with_bad_line, books_path)
-        data_dir = str(tmp_path)
+        mock_fetch.return_value = ("job-abc-456", [{"title": "Test"}])
+
+        db_resource = DatabaseResource(connection_string="postgresql://test:test@localhost/test")
 
         result = dg.materialize_to_memory(
             [raw_books],
-            resources={"path": PathResource(raw_data_dir=data_dir)},
+            resources={"database": db_resource},
         )
 
         assert result.success
         metadata = _get_metadata(result, "raw_books")
-        assert "skipped_count" in metadata
-        assert metadata["skipped_count"] == 1
+        assert "crawl_job_id" in metadata
+        assert metadata["crawl_job_id"] == "job-abc-456"
 
-    def test_zero_skipped_when_all_valid(self, jsonl_file: str) -> None:
-        """skipped_count should be 0 when all lines parse successfully."""
+    @patch("litmatch.defs.assets.extract.fetch_latest_staged_items")
+    @patch("litmatch.defs.assets.extract.ensure_staging_table")
+    def test_handles_empty_staging(self, mock_ensure, mock_fetch) -> None:
+        """raw_books should handle an empty staging table gracefully."""
         from litmatch.defs.assets.extract import raw_books
 
-        data_dir = os.path.dirname(jsonl_file)
+        mock_fetch.return_value = ("", [])
+
+        db_resource = DatabaseResource(connection_string="postgresql://test:test@localhost/test")
 
         result = dg.materialize_to_memory(
             [raw_books],
-            resources={"path": PathResource(raw_data_dir=data_dir)},
+            resources={"database": db_resource},
         )
 
         assert result.success
         metadata = _get_metadata(result, "raw_books")
-        assert metadata["skipped_count"] == 0
+        assert metadata["record_count"] == 0
 
-    def test_still_returns_parsed_data(self, jsonl_file: str) -> None:
+    @patch("litmatch.defs.assets.extract.fetch_latest_staged_items")
+    @patch("litmatch.defs.assets.extract.ensure_staging_table")
+    def test_still_returns_parsed_data(self, mock_ensure, mock_fetch) -> None:
         """raw_books should still produce usable output for downstream assets."""
         from litmatch.defs.assets.extract import raw_books
 
-        data_dir = os.path.dirname(jsonl_file)
+        mock_fetch.return_value = ("job-123", [
+            {"title": "Book 1", "author": "Author 1"},
+            {"title": "Book 2", "author": "Author 2"},
+        ])
+
+        db_resource = DatabaseResource(connection_string="postgresql://test:test@localhost/test")
 
         result = dg.materialize_to_memory(
             [raw_books],
-            resources={"path": PathResource(raw_data_dir=data_dir)},
+            resources={"database": db_resource},
         )
 
         assert result.success
@@ -287,16 +304,23 @@ class TestValidateRawBooksMetadata:
         result = validate_raw_books(context, [])
         assert isinstance(result, Generator)
 
-    def test_works_via_materialize_to_memory(self, jsonl_file: str) -> None:
+    @patch("litmatch.defs.assets.extract.fetch_latest_staged_items")
+    @patch("litmatch.defs.assets.extract.ensure_staging_table")
+    def test_works_via_materialize_to_memory(
+        self, mock_ensure, mock_fetch, sample_records: list[dict], tmp_path
+    ) -> None:
         """validate_raw_books should work correctly within Dagster materialization."""
         from litmatch.defs.assets.extract import raw_books
         from litmatch.defs.assets.validate import validate_raw_books
 
-        data_dir = os.path.dirname(jsonl_file)
+        mock_fetch.return_value = ("job-123", sample_records)
+
+        db_resource = DatabaseResource(connection_string="postgresql://test:test@localhost/test")
+        path_resource = PathResource(raw_data_dir=str(tmp_path))
 
         result = dg.materialize_to_memory(
             [raw_books, validate_raw_books],
-            resources={"path": PathResource(raw_data_dir=data_dir)},
+            resources={"database": db_resource, "path": path_resource},
         )
 
         assert result.success
@@ -314,7 +338,11 @@ class TestValidateRawBooksMetadata:
 class TestCleanedBooksMetadata:
     """cleaned_books should emit metadata: transformed_count, skipped_count."""
 
-    def test_emits_transformed_count_via_materialize(self) -> None:
+    @patch("litmatch.defs.assets.extract.fetch_latest_staged_items")
+    @patch("litmatch.defs.assets.extract.ensure_staging_table")
+    def test_emits_transformed_count_via_materialize(
+        self, mock_ensure, mock_fetch
+    ) -> None:
         """cleaned_books should emit transformed_count when materialized."""
         from litmatch.defs.assets.extract import raw_books
         from litmatch.defs.assets.transform import cleaned_books
@@ -335,15 +363,15 @@ class TestCleanedBooksMetadata:
             }
         ]
 
+        mock_fetch.return_value = ("job-123", records)
+
         with tempfile.TemporaryDirectory() as tmp_dir:
-            filepath = os.path.join(tmp_dir, "books.jsonl")
-            with open(filepath, "w") as f:
-                for r in records:
-                    f.write(json.dumps(r) + "\n")
+            db_resource = DatabaseResource(connection_string="postgresql://test:test@localhost/test")
+            path_resource = PathResource(raw_data_dir=tmp_dir)
 
             result = dg.materialize_to_memory(
                 [raw_books, validate_raw_books, cleaned_books],
-                resources={"path": PathResource(raw_data_dir=tmp_dir)},
+                resources={"database": db_resource, "path": path_resource},
             )
 
         assert result.success
@@ -351,7 +379,11 @@ class TestCleanedBooksMetadata:
         assert "transformed_count" in metadata
         assert metadata["transformed_count"] == 1
 
-    def test_emits_skipped_count_on_transform_errors(self) -> None:
+    @patch("litmatch.defs.assets.extract.fetch_latest_staged_items")
+    @patch("litmatch.defs.assets.extract.ensure_staging_table")
+    def test_emits_skipped_count_on_transform_errors(
+        self, mock_ensure, mock_fetch
+    ) -> None:
         """cleaned_books should include skipped_count for records that fail transform."""
         from litmatch.defs.assets.extract import raw_books
         from litmatch.defs.assets.transform import cleaned_books
@@ -385,15 +417,15 @@ class TestCleanedBooksMetadata:
             },
         ]
 
+        mock_fetch.return_value = ("job-123", records)
+
         with tempfile.TemporaryDirectory() as tmp_dir:
-            filepath = os.path.join(tmp_dir, "books.jsonl")
-            with open(filepath, "w") as f:
-                for r in records:
-                    f.write(json.dumps(r) + "\n")
+            db_resource = DatabaseResource(connection_string="postgresql://test:test@localhost/test")
+            path_resource = PathResource(raw_data_dir=tmp_dir)
 
             result = dg.materialize_to_memory(
                 [raw_books, validate_raw_books, cleaned_books],
-                resources={"path": PathResource(raw_data_dir=tmp_dir)},
+                resources={"database": db_resource, "path": path_resource},
             )
 
         assert result.success
@@ -401,7 +433,11 @@ class TestCleanedBooksMetadata:
         assert "skipped_count" in metadata
         assert metadata["skipped_count"] == 1
 
-    def test_emits_zero_skipped_on_clean_data(self) -> None:
+    @patch("litmatch.defs.assets.extract.fetch_latest_staged_items")
+    @patch("litmatch.defs.assets.extract.ensure_staging_table")
+    def test_emits_zero_skipped_on_clean_data(
+        self, mock_ensure, mock_fetch
+    ) -> None:
         """skipped_count should be 0 when all records transform successfully."""
         from litmatch.defs.assets.extract import raw_books
         from litmatch.defs.assets.transform import cleaned_books
@@ -422,15 +458,15 @@ class TestCleanedBooksMetadata:
             }
         ]
 
+        mock_fetch.return_value = ("job-123", records)
+
         with tempfile.TemporaryDirectory() as tmp_dir:
-            filepath = os.path.join(tmp_dir, "books.jsonl")
-            with open(filepath, "w") as f:
-                for r in records:
-                    f.write(json.dumps(r) + "\n")
+            db_resource = DatabaseResource(connection_string="postgresql://test:test@localhost/test")
+            path_resource = PathResource(raw_data_dir=tmp_dir)
 
             result = dg.materialize_to_memory(
                 [raw_books, validate_raw_books, cleaned_books],
-                resources={"path": PathResource(raw_data_dir=tmp_dir)},
+                resources={"database": db_resource, "path": path_resource},
             )
 
         assert result.success
@@ -480,7 +516,6 @@ class TestLoadBooksMetadata:
     def _make_db_resource(self):
         """Create a DatabaseResource for an in-memory SQLite DB with tables."""
         import backend.db.models  # noqa: F401
-        from litmatch.defs.resources.database import DatabaseResource
 
         db_file = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
         db_path = db_file.name

@@ -606,15 +606,16 @@ class TestJobsModule:
         assert etl_pipeline is not None
         assert etl_pipeline.name == "etl_pipeline"
 
-    def test_crawl_and_load_job_exists(self) -> None:
-        """The crawl_and_load job should be importable from jobs module."""
-        from litmatch.defs.jobs import crawl_and_load
+    def test_crawl_job_exists(self) -> None:
+        """The crawl job should be importable from jobs module."""
+        from litmatch.defs.jobs import crawl_job
 
-        assert crawl_and_load is not None
-        assert crawl_and_load.name == "crawl_and_load"
+        assert crawl_job is not None
+        assert crawl_job.name == "crawl"
 
-    def test_crawl_and_load_selects_all_assets(self) -> None:
-        """crawl_and_load job should select all assets (crawl + ETL)."""
-        from litmatch.defs.jobs import crawl_and_load
+    def test_crawl_job_selects_crawl_books(self) -> None:
+        """crawl job should select the crawl_books asset."""
+        from litmatch.defs.jobs import crawl_job
 
-        assert crawl_and_load.name == "crawl_and_load"
+        selection_str = str(crawl_job.selection)
+        assert "crawl_books" in selection_str

@@ -1,167 +1,131 @@
-"""Unit tests for the data freshness sensor.
+"""Unit tests for the staging data sensor.
 
-The data_freshness_sensor watches the books.jsonl file for modifications
-and triggers the ETL pipeline job when the file changes.
+The staging_data_sensor watches the raw_books_staging table for new crawl data
+and triggers the ETL pipeline job when a new crawl_job_id appears.
 """
-import os
-import time
-import json
-import tempfile
+from unittest.mock import MagicMock, patch
 
 import dagster as dg
 import pytest
 
-from litmatch.defs.sensors.data_freshness import (
-    CURSOR_KEY,
-    data_freshness_sensor,
-)
+from litmatch.defs.resources.database import DatabaseResource
+from litmatch.defs.sensors.data_freshness import staging_data_sensor
 
 
-class TestDataFreshnessSensorDefinition:
+class TestStagingDataSensorDefinition:
     """Tests that the sensor is properly defined as a Dagster sensor."""
 
     def test_sensor_is_a_sensor_definition(self) -> None:
-        """The decorated function should produce a SensorDefinition."""
-        assert isinstance(data_freshness_sensor, dg.SensorDefinition)
+        assert isinstance(staging_data_sensor, dg.SensorDefinition)
 
     def test_sensor_targets_etl_job(self) -> None:
-        """The sensor must target the etl_pipeline job."""
-        targets = data_freshness_sensor.targets
+        targets = staging_data_sensor.targets
         assert len(targets) > 0
         job_names = [t.job_name for t in targets if hasattr(t, "job_name")]
         assert "etl_pipeline" in job_names
 
     def test_sensor_has_descriptive_name(self) -> None:
-        """The sensor should have a meaningful name."""
-        assert data_freshness_sensor.name == "data_freshness_sensor"
+        assert staging_data_sensor.name == "staging_data_sensor"
 
     def test_sensor_has_minimum_interval(self) -> None:
-        """The sensor should poll at a reasonable interval (not too frequent)."""
-        assert data_freshness_sensor.minimum_interval_seconds >= 30
+        assert staging_data_sensor.minimum_interval_seconds >= 60
 
 
-class TestDataFreshnessSensorLogic:
-    """Tests for the sensor evaluation logic using Dagster's build_sensor_context."""
+def _make_mock_engine(job_id: str | None) -> MagicMock:
+    """Build a mock SQLAlchemy engine that returns a staged crawl_job_id.
 
-    @pytest.fixture
-    def data_dir(self, tmp_path) -> str:
-        """Create a temporary data directory with a books.jsonl file."""
-        jsonl_path = tmp_path / "books.jsonl"
-        sample = {"title": "Test Book", "author": "Author"}
-        jsonl_path.write_text(json.dumps(sample) + "\n")
-        return str(tmp_path)
+    Args:
+        job_id: The crawl_job_id to return from the query, or None
+                to simulate an empty staging table.
+    """
+    mock_engine = MagicMock()
+    mock_conn = MagicMock()
+    mock_result = MagicMock()
+    mock_result.first.return_value = (job_id,) if job_id is not None else None
+    mock_conn.execute.return_value = mock_result
+    mock_conn.__enter__ = MagicMock(return_value=mock_conn)
+    mock_conn.__exit__ = MagicMock(return_value=False)
+    mock_engine.connect.return_value = mock_conn
+    mock_engine.dispose = MagicMock()
+    return mock_engine
 
-    @pytest.fixture
-    def empty_data_dir(self, tmp_path) -> str:
-        """Create a temporary data directory without a books.jsonl file."""
-        return str(tmp_path)
 
-    def test_first_run_triggers_pipeline(self, data_dir: str) -> None:
-        """On first evaluation (no cursor), the sensor should trigger a run."""
-        from litmatch.defs.resources.path import PathResource
+class TestStagingDataSensorLogic:
+    """Tests for the sensor evaluation logic."""
 
-        context = dg.build_sensor_context(
-            resources={"path": PathResource(raw_data_dir=data_dir)},
-        )
-        result = data_freshness_sensor.evaluate_tick(context)
+    @patch("litmatch.defs.sensors.data_freshness.get_latest_crawl_job_id")
+    @patch("litmatch.defs.sensors.data_freshness.ensure_staging_table")
+    def test_first_run_with_data_triggers_pipeline(self, mock_ensure, mock_get_latest) -> None:
+        mock_get_latest.return_value = "job-abc-123"
+        db_resource = DatabaseResource(connection_string="postgresql://test:test@localhost/test")
+        mock_engine = _make_mock_engine("job-abc-123")
+
+        with patch.object(DatabaseResource, "get_engine", return_value=mock_engine):
+            context = dg.build_sensor_context(resources={"database": db_resource})
+            result = staging_data_sensor.evaluate_tick(context)
 
         assert len(result.run_requests) == 1
-        assert result.cursor is not None
+        assert result.run_requests[0].run_key == "job-abc-123"
+        assert result.cursor == "job-abc-123"
 
-    def test_unchanged_file_does_not_trigger(self, data_dir: str) -> None:
-        """If the file has not changed since last cursor, no run should be requested."""
-        from litmatch.defs.resources.path import PathResource
+    @patch("litmatch.defs.sensors.data_freshness.get_latest_crawl_job_id")
+    @patch("litmatch.defs.sensors.data_freshness.ensure_staging_table")
+    def test_unchanged_data_does_not_trigger(self, mock_ensure, mock_get_latest) -> None:
+        mock_get_latest.return_value = "job-abc-123"
+        db_resource = DatabaseResource(connection_string="postgresql://test:test@localhost/test")
+        mock_engine = _make_mock_engine("job-abc-123")
 
-        # First tick: sets the cursor
-        context = dg.build_sensor_context(
-            resources={"path": PathResource(raw_data_dir=data_dir)},
-        )
-        first_result = data_freshness_sensor.evaluate_tick(context)
-        cursor_after_first = first_result.cursor
-
-        # Second tick: same file, same mtime
-        context = dg.build_sensor_context(
-            cursor=cursor_after_first,
-            resources={"path": PathResource(raw_data_dir=data_dir)},
-        )
-        second_result = data_freshness_sensor.evaluate_tick(context)
-
-        assert len(second_result.run_requests) == 0
-
-    def test_modified_file_triggers_pipeline(self, data_dir: str) -> None:
-        """If the file is modified after the cursor was set, trigger a new run."""
-        from litmatch.defs.resources.path import PathResource
-
-        # First tick
-        context = dg.build_sensor_context(
-            resources={"path": PathResource(raw_data_dir=data_dir)},
-        )
-        first_result = data_freshness_sensor.evaluate_tick(context)
-        cursor_after_first = first_result.cursor
-
-        # Modify the file (ensure mtime changes)
-        jsonl_path = os.path.join(data_dir, "books.jsonl")
-        time.sleep(0.05)  # Ensure filesystem timestamp granularity
-        with open(jsonl_path, "a") as f:
-            f.write(json.dumps({"title": "New Book"}) + "\n")
-
-        # Second tick with old cursor
-        context = dg.build_sensor_context(
-            cursor=cursor_after_first,
-            resources={"path": PathResource(raw_data_dir=data_dir)},
-        )
-        second_result = data_freshness_sensor.evaluate_tick(context)
-
-        assert len(second_result.run_requests) == 1
-        assert second_result.cursor != cursor_after_first
-
-    def test_missing_file_skips_without_error(self, empty_data_dir: str) -> None:
-        """If the books.jsonl file does not exist, the sensor should skip gracefully."""
-        from litmatch.defs.resources.path import PathResource
-
-        context = dg.build_sensor_context(
-            resources={"path": PathResource(raw_data_dir=empty_data_dir)},
-        )
-        result = data_freshness_sensor.evaluate_tick(context)
+        with patch.object(DatabaseResource, "get_engine", return_value=mock_engine):
+            context = dg.build_sensor_context(
+                cursor="job-abc-123",
+                resources={"database": db_resource},
+            )
+            result = staging_data_sensor.evaluate_tick(context)
 
         assert len(result.run_requests) == 0
+        assert result.cursor == "job-abc-123"
 
-    def test_cursor_stores_mtime_as_string(self, data_dir: str) -> None:
-        """The cursor should store the file's mtime as a string for serialization."""
-        from litmatch.defs.resources.path import PathResource
+    @patch("litmatch.defs.sensors.data_freshness.get_latest_crawl_job_id")
+    @patch("litmatch.defs.sensors.data_freshness.ensure_staging_table")
+    def test_new_crawl_triggers_pipeline(self, mock_ensure, mock_get_latest) -> None:
+        mock_get_latest.return_value = "job-new-456"
+        db_resource = DatabaseResource(connection_string="postgresql://test:test@localhost/test")
+        mock_engine = _make_mock_engine("job-new-456")
 
-        context = dg.build_sensor_context(
-            resources={"path": PathResource(raw_data_dir=data_dir)},
-        )
-        result = data_freshness_sensor.evaluate_tick(context)
+        with patch.object(DatabaseResource, "get_engine", return_value=mock_engine):
+            context = dg.build_sensor_context(
+                cursor="job-old-123",
+                resources={"database": db_resource},
+            )
+            result = staging_data_sensor.evaluate_tick(context)
 
-        # Cursor should be a string representation of a float (mtime)
-        cursor = result.cursor
-        assert cursor is not None
-        float(cursor)  # Should not raise
+        assert len(result.run_requests) == 1
+        assert result.run_requests[0].run_key == "job-new-456"
+        assert result.cursor == "job-new-456"
 
+    @patch("litmatch.defs.sensors.data_freshness.get_latest_crawl_job_id")
+    @patch("litmatch.defs.sensors.data_freshness.ensure_staging_table")
+    def test_empty_staging_table_skips(self, mock_ensure, mock_get_latest) -> None:
+        mock_get_latest.return_value = None
+        db_resource = DatabaseResource(connection_string="postgresql://test:test@localhost/test")
+        mock_engine = _make_mock_engine(None)
 
-class TestCursorKey:
-    """Tests for the cursor key constant."""
+        with patch.object(DatabaseResource, "get_engine", return_value=mock_engine):
+            context = dg.build_sensor_context(resources={"database": db_resource})
+            result = staging_data_sensor.evaluate_tick(context)
 
-    def test_cursor_key_is_defined(self) -> None:
-        """CURSOR_KEY should be a non-empty string constant."""
-        assert isinstance(CURSOR_KEY, str)
-        assert len(CURSOR_KEY) > 0
+        assert len(result.run_requests) == 0
 
 
 class TestEtlPipelineJob:
     """Tests for the etl_pipeline job definition."""
 
     def test_etl_pipeline_is_a_job(self) -> None:
-        """The etl_pipeline should be a Dagster UnresolvedAssetJobDefinition."""
         from litmatch.defs.jobs import etl_pipeline
-
         assert etl_pipeline is not None
         assert etl_pipeline.name == "etl_pipeline"
 
     def test_sensor_registered_in_definitions(self) -> None:
-        """The sensor and job should be registered in the Dagster Definitions."""
         import os
         from unittest.mock import patch
 
@@ -170,8 +134,6 @@ class TestEtlPipelineJob:
             "RAW_DATA_DIR": "/tmp/test",
         }):
             from litmatch.definitions import defs
-
-            # LazyDefinitions must be resolved via load_fn()
             resolved = defs.load_fn()
             sensor_names = [s.name for s in resolved.sensors]
-            assert "data_freshness_sensor" in sensor_names
+            assert "staging_data_sensor" in sensor_names

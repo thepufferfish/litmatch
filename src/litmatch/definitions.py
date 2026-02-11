@@ -6,15 +6,16 @@ from litmatch.defs.assets.crawl import crawl_books
 from litmatch.defs.assets.embedding import book_embeddings, review_embeddings
 from litmatch.defs.assets.extract import raw_books
 from litmatch.defs.assets.load import load_books
+from litmatch.defs.assets.maintenance import cleanup_staging
 from litmatch.defs.assets.transform import cleaned_books
 from litmatch.defs.assets.validate import validate_raw_books
-from litmatch.defs.jobs import crawl_and_load, embedding_pipeline, etl_pipeline
+from litmatch.defs.jobs import crawl_job, embedding_pipeline, etl_pipeline
 from litmatch.defs.resources.database import DatabaseResource
 from litmatch.defs.resources.embedding_model import EmbeddingModelResource
 from litmatch.defs.resources.path import PathResource
 from litmatch.defs.resources.scrapyd import ScrapydResource
-from litmatch.defs.schedules import weekly_etl_schedule
-from litmatch.defs.sensors.data_freshness import data_freshness_sensor
+from litmatch.defs.schedules import weekly_crawl_schedule
+from litmatch.defs.sensors.data_freshness import staging_data_sensor
 from litmatch.defs.sensors.startup_crawl import startup_crawl_sensor
 
 
@@ -58,12 +59,13 @@ def defs():
             validate_raw_books,
             cleaned_books,
             load_books,
+            cleanup_staging,
             review_embeddings,
             book_embeddings,
         ],
-        jobs=[etl_pipeline, crawl_and_load, embedding_pipeline],
-        schedules=[weekly_etl_schedule],
-        sensors=[data_freshness_sensor, startup_crawl_sensor],
+        jobs=[etl_pipeline, crawl_job, embedding_pipeline],
+        schedules=[weekly_crawl_schedule],
+        sensors=[staging_data_sensor, startup_crawl_sensor],
         resources={
             "database": DatabaseResource(connection_string=_get_database_url()),
             "embedding_model": EmbeddingModelResource(

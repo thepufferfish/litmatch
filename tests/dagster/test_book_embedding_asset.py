@@ -703,8 +703,9 @@ class TestEmbeddingPipelineJob:
         selection_str = str(etl_pipeline.selection)
         assert "book_embeddings" in selection_str
 
-    def test_crawl_and_load_includes_book_embeddings(self) -> None:
-        from litmatch.defs.jobs import crawl_and_load
+    def test_crawl_job_does_not_include_book_embeddings(self) -> None:
+        """The crawl job only selects crawl_books; embeddings run in etl_pipeline."""
+        from litmatch.defs.jobs import crawl_job
 
-        selection_str = str(crawl_and_load.selection)
-        assert "book_embeddings" in selection_str
+        selection_str = str(crawl_job.selection)
+        assert "book_embeddings" not in selection_str

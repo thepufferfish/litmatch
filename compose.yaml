@@ -59,12 +59,14 @@ services:
     build:
       context: ./scraper
     restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
     environment:
       PROXY_TOKEN: ${PROXY_TOKEN}
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
     ports:
       - "127.0.0.1:6800:6800"
-    volumes:
-      - shared_scraper_output:/scraper/output
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:6800/"]
       interval: 10s
@@ -85,11 +87,9 @@ services:
         condition: service_healthy
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
-      RAW_DATA_DIR: /data/raw
       SCRAPYD_URL: http://scrapyd:6800
       DAGSTER_HOME: /opt/dagster/dagster_home
     volumes:
-      - shared_scraper_output:/data/raw
       - dagster_storage:/opt/dagster/dagster_home/storage
     healthcheck:
       test: ["CMD", "uv", "run", "dagster", "api", "grpc-health-check", "--port", "4000"]
@@ -129,11 +129,9 @@ services:
         condition: service_healthy
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
-      RAW_DATA_DIR: /data/raw
       SCRAPYD_URL: http://scrapyd:6800
       DAGSTER_HOME: /opt/dagster/dagster_home
     volumes:
-      - shared_scraper_output:/data/raw
       - dagster_storage:/opt/dagster/dagster_home/storage
     healthcheck:
       test: ["CMD", "uv", "run", "dagster-daemon", "liveness-check"]
@@ -144,5 +142,4 @@ services:
 
 volumes:
   postgres_data:
-  shared_scraper_output:
   dagster_storage:

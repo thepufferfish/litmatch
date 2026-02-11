@@ -23,59 +23,66 @@ def _find_output_value(outputs: list, output_name: str) -> list[dict]:
 
 
 class TestRawBooksAsset:
-    """Tests for the raw_books extract asset.
+    """Tests for the raw_books extract asset (staging table)."""
 
-    raw_books declares crawl_books as a dependency via deps=["crawl_books"],
-    but can be materialized independently since deps creates a graph-only
-    dependency (not requiring IO manager loads).
-    """
-
-    def test_extracts_valid_jsonl(self, jsonl_file: str) -> None:
+    @patch("litmatch.defs.assets.extract.fetch_latest_staged_items")
+    @patch("litmatch.defs.assets.extract.ensure_staging_table")
+    def test_extracts_from_staging_table(self, mock_ensure, mock_fetch) -> None:
         from litmatch.defs.assets.extract import raw_books
-        from litmatch.defs.resources.path import PathResource
+        from litmatch.defs.resources.database import DatabaseResource
 
-        data_dir = os.path.dirname(jsonl_file)
+        mock_fetch.return_value = ("job-123", [
+            {"title": "Book 1", "author": "Author 1", "url": "http://example.com/1"},
+            {"title": "Book 2", "author": "Author 2", "url": "http://example.com/2"},
+        ])
 
-        # raw_books can be materialized without crawl_books being present
         result = dg.materialize_to_memory(
             [raw_books],
-            resources={"path": PathResource(raw_data_dir=data_dir)},
+            resources={"database": DatabaseResource(connection_string="postgresql://test:test@localhost/test")},
         )
 
         assert result.success
         output = result.output_for_node("raw_books")
-        assert len(output) == 2  # Two records in fixture
+        assert len(output) == 2
+        mock_ensure.assert_called_once()
+        mock_fetch.assert_called_once()
 
-    def test_handles_malformed_lines(self, jsonl_file_with_bad_line: str) -> None:
+    @patch("litmatch.defs.assets.extract.fetch_latest_staged_items")
+    @patch("litmatch.defs.assets.extract.ensure_staging_table")
+    def test_handles_empty_staging_table(self, mock_ensure, mock_fetch) -> None:
         from litmatch.defs.assets.extract import raw_books
-        from litmatch.defs.resources.path import PathResource
+        from litmatch.defs.resources.database import DatabaseResource
 
-        data_dir = os.path.dirname(jsonl_file_with_bad_line)
-        # Rename the file to books.jsonl so PathResource finds it
-        books_path = os.path.join(data_dir, "books.jsonl")
-        if not os.path.exists(books_path):
-            os.rename(jsonl_file_with_bad_line, books_path)
+        mock_fetch.return_value = ("", [])
 
         result = dg.materialize_to_memory(
             [raw_books],
-            resources={"path": PathResource(raw_data_dir=data_dir)},
+            resources={"database": DatabaseResource(connection_string="postgresql://test:test@localhost/test")},
         )
 
         assert result.success
         output = result.output_for_node("raw_books")
-        assert len(output) == 2  # Two valid lines, one bad line skipped
+        assert len(output) == 0
 
-    def test_file_not_found_raises(self, tmp_path) -> None:
+    @patch("litmatch.defs.assets.extract.fetch_latest_staged_items")
+    @patch("litmatch.defs.assets.extract.ensure_staging_table")
+    def test_metadata_includes_crawl_job_id(self, mock_ensure, mock_fetch) -> None:
         from litmatch.defs.assets.extract import raw_books
-        from litmatch.defs.resources.path import PathResource
+        from litmatch.defs.resources.database import DatabaseResource
+
+        mock_fetch.return_value = ("abc-456", [{"title": "Test"}])
 
         result = dg.materialize_to_memory(
             [raw_books],
-            resources={"path": PathResource(raw_data_dir=str(tmp_path / "nonexistent"))},
-            raise_on_error=False,
+            resources={"database": DatabaseResource(connection_string="postgresql://test:test@localhost/test")},
         )
 
-        assert not result.success
+        assert result.success
+        events = result.events_for_node("raw_books")
+        materialization = [e for e in events if e.event_type_value == "ASSET_MATERIALIZATION"][0]
+        metadata = materialization.materialization.metadata
+        assert metadata["record_count"].value == 1
+        assert metadata["crawl_job_id"].value == "abc-456"
 
 
 class TestValidateRawBooksAsset:
