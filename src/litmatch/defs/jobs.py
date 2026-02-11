@@ -20,20 +20,12 @@ etl_pipeline = dg.define_asset_job(
 )
 
 crawl_and_load = dg.define_asset_job(
-    name="crawl_and_load",
+    name="crawl",
     selection=dg.AssetSelection.assets(
         "crawl_books",
-        "raw_books",
-        "validated_books",
-        "validation_errors",
-        "cleaned_books",
-        "load_books",
-        "review_embeddings",
-        "book_embeddings",
     ),
     description=(
-        "Full crawl-and-load pipeline: trigger Scrapyd crawl, "
-        "then extract, validate, transform, load books, and generate embeddings."
+        "Trigger Scrapyd crawl"
     ),
 )
 

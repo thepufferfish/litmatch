@@ -14,7 +14,7 @@ next tick (cursor stays None).
 """
 import dagster as dg
 
-from litmatch.defs.jobs import crawl_and_load
+from litmatch.defs.jobs import crawl
 from litmatch.defs.resources.scrapyd import ScrapydResource
 
 CURSOR_CRAWL_REQUESTED = "crawl_requested"
@@ -23,7 +23,7 @@ CURSOR_COMPLETED = "completed"
 
 @dg.sensor(
     name="startup_crawl_sensor",
-    job=crawl_and_load,
+    job=crawl,
     minimum_interval_seconds=30,
     description=(
         "Fires exactly once on first deployment when Scrapyd is healthy, "
