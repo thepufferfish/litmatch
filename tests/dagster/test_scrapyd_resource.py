@@ -420,3 +420,90 @@ class TestScrapydFetchLog:
         resource = ScrapydResource()
         with pytest.raises(ValueError, match="offset must be non-negative"):
             resource.fetch_log("a" * 32, offset=-1)
+
+
+class TestScrapydCancel:
+    """Tests for the cancel method that cancels running Scrapyd jobs."""
+
+    def test_cancel_posts_to_cancel_endpoint(self) -> None:
+        """Should POST to /cancel.json with project and job params."""
+        resource = ScrapydResource()
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "status": "ok",
+            "prevstate": "running",
+        }
+
+        with patch("litmatch.defs.resources.scrapyd.httpx") as mock_httpx:
+            mock_httpx.post.return_value = mock_response
+            resource.cancel("abc123")
+
+        mock_httpx.post.assert_called_once_with(
+            "http://localhost:6800/cancel.json",
+            data={"project": "bookmarks", "job": "abc123"},
+            timeout=30,
+        )
+
+    def test_cancel_uses_custom_project(self) -> None:
+        """Should use the configured project name in the cancel request."""
+        resource = ScrapydResource(
+            base_url="http://scrapyd:6800",
+            project="myproject",
+        )
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "status": "ok",
+            "prevstate": "running",
+        }
+
+        with patch("litmatch.defs.resources.scrapyd.httpx") as mock_httpx:
+            mock_httpx.post.return_value = mock_response
+            resource.cancel("xyz789")
+
+        mock_httpx.post.assert_called_once_with(
+            "http://scrapyd:6800/cancel.json",
+            data={"project": "myproject", "job": "xyz789"},
+            timeout=30,
+        )
+
+    def test_cancel_returns_prevstate(self) -> None:
+        """Should return the previous state from Scrapyd response."""
+        resource = ScrapydResource()
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "status": "ok",
+            "prevstate": "running",
+        }
+
+        with patch("litmatch.defs.resources.scrapyd.httpx") as mock_httpx:
+            mock_httpx.post.return_value = mock_response
+            prevstate = resource.cancel("abc123")
+
+        assert prevstate == "running"
+
+    def test_cancel_raises_on_scrapyd_error(self) -> None:
+        """If Scrapyd returns status != 'ok', raise RuntimeError."""
+        resource = ScrapydResource()
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "status": "error",
+            "message": "job not found",
+        }
+
+        with patch("litmatch.defs.resources.scrapyd.httpx") as mock_httpx:
+            mock_httpx.post.return_value = mock_response
+            with pytest.raises(RuntimeError, match="job not found"):
+                resource.cancel("abc123")
+
+    def test_cancel_raises_on_http_error(self) -> None:
+        """If the HTTP request fails, the error should propagate."""
+        resource = ScrapydResource()
+
+        with patch("litmatch.defs.resources.scrapyd.httpx") as mock_httpx:
+            mock_httpx.post.side_effect = ConnectionError("connection refused")
+            with pytest.raises(ConnectionError, match="connection refused"):
+                resource.cancel("abc123")

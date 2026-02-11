@@ -89,6 +89,35 @@ class ScrapydResource(dg.ConfigurableResource):
 
         return "unknown"
 
+    def cancel(self, job_id: str) -> str:
+        """Cancel a running or pending Scrapyd job.
+
+        Posts to the /cancel.json endpoint to stop a job.
+
+        Args:
+            job_id: The Scrapyd job ID to cancel.
+
+        Returns:
+            The previous state of the job ('running', 'pending', etc.).
+
+        Raises:
+            RuntimeError: If Scrapyd returns a non-ok status.
+            ConnectionError: If Scrapyd is unreachable.
+        """
+        response = httpx.post(
+            f"{self.base_url}/cancel.json",
+            data={"project": self.project, "job": job_id},
+            timeout=30,
+        )
+        response.raise_for_status()
+
+        body = response.json()
+        if body.get("status") != "ok":
+            message = body.get("message", "unknown error")
+            raise RuntimeError(f"Scrapyd cancel failed: {message}")
+
+        return body.get("prevstate", "unknown")
+
     _JOB_ID_PATTERN: re.Pattern[str] = re.compile(r"^[a-f0-9]{32}$")
     _MAX_LOG_CHUNK_BYTES: int = 10 * 1024 * 1024  # 10 MB
 

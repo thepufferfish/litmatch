@@ -87,44 +87,53 @@ def _execute_crawl(
     log_offset = 0
     accumulated_log: list[str] = []
 
-    while True:
-        status = scrapyd.job_status(job_id)
-        log.info(f"Crawl job {job_id} status: {status}")
+    try:
+        while True:
+            status = scrapyd.job_status(job_id)
+            log.info(f"Crawl job {job_id} status: {status}")
 
-        if fetch_log is not None and status in ("running", "finished"):
-            try:
-                new_content, log_offset = fetch_log(job_id, log_offset)
-                if new_content:
-                    accumulated_log.append(new_content)
-                    for line in new_content.strip().splitlines():
-                        sanitized = _CONTROL_CHARS.sub("", line)[:_MAX_LOG_LINE_LEN]
-                        log.info(f"[spider:{scrapyd.spider}] {sanitized}")
-            except Exception as exc:
-                log.warning(f"Failed to fetch spider log: {exc}")
+            if fetch_log is not None and status in ("running", "finished"):
+                try:
+                    new_content, log_offset = fetch_log(job_id, log_offset)
+                    if new_content:
+                        accumulated_log.append(new_content)
+                        for line in new_content.strip().splitlines():
+                            sanitized = _CONTROL_CHARS.sub("", line)[:_MAX_LOG_LINE_LEN]
+                            log.info(f"[spider:{scrapyd.spider}] {sanitized}")
+                except Exception as exc:
+                    log.warning(f"Failed to fetch spider log: {exc}")
 
-        if status == "finished":
-            log.info(f"Crawl job {job_id} completed successfully.")
-            return (job_id, "".join(accumulated_log))
+            if status == "finished":
+                log.info(f"Crawl job {job_id} completed successfully.")
+                return (job_id, "".join(accumulated_log))
 
-        if status == "unknown":
-            raise RuntimeError(
-                f"Crawl job {job_id} lost by Scrapyd (status: unknown). "
-                "The job may have been cancelled or expired."
-            )
+            if status == "unknown":
+                raise RuntimeError(
+                    f"Crawl job {job_id} lost by Scrapyd (status: unknown). "
+                    "The job may have been cancelled or expired."
+                )
 
-        if time.monotonic() >= deadline:
-            raise TimeoutError(
-                f"Crawl job {job_id} timed out after "
-                f"{scrapyd.timeout_seconds} seconds."
-            )
+            if time.monotonic() >= deadline:
+                raise TimeoutError(
+                    f"Crawl job {job_id} timed out after "
+                    f"{scrapyd.timeout_seconds} seconds."
+                )
 
-        time.sleep(scrapyd.poll_interval_seconds)
+            time.sleep(scrapyd.poll_interval_seconds)
+    except BaseException:
+        try:
+            log.info(f"Cancelling Scrapyd job {job_id}...")
+            scrapyd.cancel(job_id)
+            log.info(f"Scrapyd job {job_id} cancelled.")
+        except Exception as cancel_exc:
+            log.warning(f"Failed to cancel Scrapyd job {job_id}: {cancel_exc}")
+        raise
 
 
 @dg.asset(
     description="Schedule a Scrapyd spider crawl and wait for it to finish.",
     kinds={"python", "scrapyd"},
-    tags={"dagster/max_runtime": 5*24*3600} # runs could take 5 days
+    tags={"dagster/max_runtime": str(5 * 24 * 3600)},  # runs could take 5 days
 )
 def crawl_books(
     context: dg.AssetExecutionContext,

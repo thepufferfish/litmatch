@@ -418,6 +418,119 @@ class TestCrawlBooksUnitLogic:
         assert log_text == ""
 
 
+class TestCrawlCancellation:
+    """Tests for Scrapyd job cancellation when crawl is interrupted."""
+
+    def test_cancels_job_on_timeout(self) -> None:
+        """When crawl times out, the Scrapyd job should be cancelled."""
+        from litmatch.defs.assets.crawl import _execute_crawl
+
+        mock_scrapyd = MagicMock(spec=ScrapydResource)
+        mock_scrapyd.schedule.return_value = "timeout-job"
+        mock_scrapyd.poll_interval_seconds = 0
+        mock_scrapyd.timeout_seconds = 0
+        mock_scrapyd.job_status.return_value = "running"
+
+        mock_log = MagicMock()
+
+        with pytest.raises(TimeoutError):
+            _execute_crawl(mock_scrapyd, mock_log)
+
+        mock_scrapyd.cancel.assert_called_once_with("timeout-job")
+
+    def test_cancels_job_on_system_exit(self) -> None:
+        """When run is terminated (SystemExit), Scrapyd job should be cancelled."""
+        from litmatch.defs.assets.crawl import _execute_crawl
+
+        mock_scrapyd = MagicMock(spec=ScrapydResource)
+        mock_scrapyd.schedule.return_value = "term-job"
+        mock_scrapyd.poll_interval_seconds = 0
+        mock_scrapyd.timeout_seconds = 10
+        mock_scrapyd.job_status.side_effect = SystemExit(1)
+
+        mock_log = MagicMock()
+
+        with pytest.raises(SystemExit):
+            _execute_crawl(mock_scrapyd, mock_log)
+
+        mock_scrapyd.cancel.assert_called_once_with("term-job")
+
+    def test_cancels_job_on_keyboard_interrupt(self) -> None:
+        """When user sends SIGINT, Scrapyd job should be cancelled."""
+        from litmatch.defs.assets.crawl import _execute_crawl
+
+        mock_scrapyd = MagicMock(spec=ScrapydResource)
+        mock_scrapyd.schedule.return_value = "int-job"
+        mock_scrapyd.poll_interval_seconds = 0
+        mock_scrapyd.timeout_seconds = 10
+        mock_scrapyd.job_status.side_effect = KeyboardInterrupt()
+
+        mock_log = MagicMock()
+
+        with pytest.raises(KeyboardInterrupt):
+            _execute_crawl(mock_scrapyd, mock_log)
+
+        mock_scrapyd.cancel.assert_called_once_with("int-job")
+
+    def test_does_not_cancel_on_success(self) -> None:
+        """On normal completion, cancel should NOT be called."""
+        from litmatch.defs.assets.crawl import _execute_crawl
+
+        mock_scrapyd = MagicMock(spec=ScrapydResource)
+        mock_scrapyd.schedule.return_value = "ok-job"
+        mock_scrapyd.poll_interval_seconds = 0
+        mock_scrapyd.timeout_seconds = 10
+        mock_scrapyd.job_status.return_value = "finished"
+
+        mock_log = MagicMock()
+
+        _execute_crawl(mock_scrapyd, mock_log)
+
+        mock_scrapyd.cancel.assert_not_called()
+
+    def test_cancel_failure_does_not_suppress_original_error(self) -> None:
+        """If cancel itself fails, the original exception should still propagate."""
+        from litmatch.defs.assets.crawl import _execute_crawl
+
+        mock_scrapyd = MagicMock(spec=ScrapydResource)
+        mock_scrapyd.schedule.return_value = "fail-job"
+        mock_scrapyd.poll_interval_seconds = 0
+        mock_scrapyd.timeout_seconds = 0
+        mock_scrapyd.job_status.return_value = "running"
+        mock_scrapyd.cancel.side_effect = ConnectionError("scrapyd down")
+
+        mock_log = MagicMock()
+
+        with pytest.raises(TimeoutError):
+            _execute_crawl(mock_scrapyd, mock_log)
+
+        # Cancel was attempted even though it failed
+        mock_scrapyd.cancel.assert_called_once_with("fail-job")
+        # Warning should be logged about the cancel failure
+        warning_calls = [
+            call for call in mock_log.warning.call_args_list
+            if "Failed to cancel" in str(call)
+        ]
+        assert len(warning_calls) == 1
+
+    def test_cancels_job_on_unknown_status(self) -> None:
+        """When job status becomes unknown, Scrapyd job should be cancelled."""
+        from litmatch.defs.assets.crawl import _execute_crawl
+
+        mock_scrapyd = MagicMock(spec=ScrapydResource)
+        mock_scrapyd.schedule.return_value = "lost-job"
+        mock_scrapyd.poll_interval_seconds = 0
+        mock_scrapyd.timeout_seconds = 10
+        mock_scrapyd.job_status.return_value = "unknown"
+
+        mock_log = MagicMock()
+
+        with pytest.raises(RuntimeError):
+            _execute_crawl(mock_scrapyd, mock_log)
+
+        mock_scrapyd.cancel.assert_called_once_with("lost-job")
+
+
 class TestParseScrapyStats:
     """Tests for the _parse_scrapy_stats helper function."""
 
