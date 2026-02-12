@@ -17,7 +17,7 @@ export function useUserRating(bookId: number, userId: number | undefined) {
 }
 
 export function useUserRatingsMap(userId: number | undefined) {
-  return useQuery({
+  const query = useQuery({
     queryKey: ["userRatings", userId],
     queryFn: async () => {
       const { data } = await api.get<UserRating[]>("/ratings/");
@@ -30,6 +30,15 @@ export function useUserRatingsMap(userId: number | undefined) {
     staleTime: 5 * 60 * 1000,
     enabled: !!userId,
   });
+
+  // Ensure we always return a Map (or undefined during loading)
+  // Protect against React Query cache corruption where data might not be a Map
+  return {
+    ...query,
+    data: query.data === undefined ? undefined :
+          query.data instanceof Map ? query.data :
+          new Map<number, number>(),
+  };
 }
 
 export function useSubmitRating(userId?: number) {
@@ -45,10 +54,12 @@ export function useSubmitRating(userId?: number) {
       const queryKey = ["userRatings", userId];
       await queryClient.cancelQueries({ queryKey });
       const previous = queryClient.getQueryData<Map<number, number>>(queryKey);
-      const updated = new Map(previous ?? []);
+      // Ensure we have a valid Map before updating
+      const safeMap = previous instanceof Map ? previous : new Map<number, number>();
+      const updated = new Map(safeMap);
       updated.set(variables.book_id, variables.rating);
       queryClient.setQueryData(queryKey, updated);
-      return { previous: previous ?? new Map<number, number>() };
+      return { previous: safeMap };
     },
     onError: (_err, _variables, context) => {
       if (context?.previous && userId) {
@@ -82,10 +93,12 @@ export function useDeleteRating(userId?: number) {
       const queryKey = ["userRatings", userId];
       await queryClient.cancelQueries({ queryKey });
       const previous = queryClient.getQueryData<Map<number, number>>(queryKey);
-      const updated = new Map(previous ?? []);
+      // Ensure we have a valid Map before updating
+      const safeMap = previous instanceof Map ? previous : new Map<number, number>();
+      const updated = new Map(safeMap);
       updated.delete(bookId);
       queryClient.setQueryData(queryKey, updated);
-      return { previous: previous ?? new Map<number, number>() };
+      return { previous: safeMap };
     },
     onError: (_err, _bookId, context) => {
       if (context?.previous && userId) {
