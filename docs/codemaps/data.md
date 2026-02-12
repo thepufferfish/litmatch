@@ -99,7 +99,7 @@ PaginatedResponse<T> {items, total, page, limit}
 
 ## ETL Data Pipeline
 
-### Raw Record (books.jsonl)
+### Raw Record (raw_books_staging table, JSONB item_data column)
 ```json
 {
   "title": "str",

@@ -168,13 +168,13 @@ podman compose up --build -d
 This starts:
 - **db** (pgvector/pgvector:pg18) on port 5432
 - **backend** (FastAPI) on port 8000
-- **scrapyd** (Scrapy daemon) on port 6800
+- **scrapyd** (Scrapy daemon, depends on db) on port 6800
 - **dagster-code** (gRPC code server) on port 4000
 - **dagster-webserver** (UI) on port 3000
 - **dagster-daemon** (schedules/sensors)
 - **frontend** (nginx) on port 8080
 
-All services have health checks. The backend waits for healthy database before starting. The dagster-daemon waits for both healthy dagster-code and healthy backend to ensure database is initialized before the startup crawl sensor runs.
+All services have health checks. The backend waits for healthy database before starting. Scrapyd depends on `db` to write scraped items to the `raw_books_staging` PostgreSQL table. The dagster-daemon waits for both healthy dagster-code and healthy backend to ensure database is initialized before the startup crawl sensor runs. Data flows through the staging table (no shared volume).
 
 ## Testing
 
@@ -189,29 +189,44 @@ uv run pytest tests/dagster/ -v -m "not integration"
 Tests are in `tests/dagster/`:
 - `test_assets.py` — Asset pipeline tests (extract, validate, transform, load)
 - `test_asset_dependencies.py` — Asset dependency graph tests
-- `test_crawl_asset.py` — Crawl asset + jobs module tests
-- `test_db_operations.py` — Database upsert operation tests
-- `test_scrapyd_resource.py` — ScrapydResource HTTP client tests
-- `test_sensors.py` — Data freshness sensor tests
-- `test_startup_crawl_sensor.py` — Startup crawl sensor state machine tests
-- `test_transforms.py` — Data transformation tests
-- `test_validation.py` — Input validation tests
-- `test_embedding_asset.py` — Review embedding asset tests
 - `test_book_embedding_asset.py` — Book embedding asset tests
+- `test_crawl_asset.py` — Crawl asset + jobs module tests
+- `test_dagster_config.py` — Dagster configuration tests
+- `test_db_operations.py` — Database upsert operation tests
+- `test_embedding_asset.py` — Review embedding asset tests
 - `test_embedding_resource.py` — EmbeddingModelResource tests
-- `test_schedule.py` — Weekly ETL schedule tests
-- `test_retry_policy.py` — Asset retry policy tests
 - `test_metadata_emission.py` — Asset metadata emission tests
 - `test_quarantine.py` — Quarantine tests
+- `test_retry_policy.py` — Asset retry policy tests
+- `test_schedule.py` — Weekly ETL schedule tests
+- `test_scrapyd_resource.py` — ScrapydResource HTTP client tests
+- `test_sensors.py` — Staging data sensor tests
+- `test_startup_crawl_sensor.py` — Startup crawl sensor state machine tests
+- `test_token_cleanup.py` — Token cleanup maintenance asset tests
+- `test_transforms.py` — Data transformation tests
+- `test_validation.py` — Input validation tests
 
 ### Backend Tests
 
 ```bash
-uv run pytest backend/tests/ -v
+uv run pytest backend/tests/ -v        # Tests in backend/tests/
+uv run pytest tests/backend/ -v         # Tests in tests/backend/
 ```
 
 Tests are in `backend/tests/`:
+- `test_auth.py` — Authentication logic tests
+- `test_config.py` — Configuration tests
+- `test_endpoints.py` — API endpoint tests
+- `test_models.py` — Database model tests
+- `test_rate_limit.py` — Rate limiting tests
 - `test_recommendations.py` — Recommendation engine tests (embedding computation, nearest-book search, popular fallback)
+- `test_search.py` — Search functionality tests
+
+Tests are in `tests/backend/`:
+- `test_auth.py` — Authentication flow tests
+- `test_books_endpoint.py` — Books endpoint tests
+- `test_rate_limit.py` — Rate limiting tests
+- `test_security_headers.py` — Security headers tests
 
 ### Integration Tests
 
@@ -229,15 +244,21 @@ Tests are in `tests/integration/`:
 - `test_etl_pipeline.py` — Full ETL pipeline execution via GraphQL API
 - `test_backend_api.py` — REST API endpoints (auth, books, search, ratings)
 
-**Test fixtures:** `tests/integration/fixtures/books.jsonl` contains 3 sample book records mounted into Dagster containers during integration tests.
-
 **Integration test configuration (`compose.test.yaml`):**
 - Uses isolated test volumes: `postgres_data_test`, `dagster_storage_test` (independent from dev volumes)
-- Mounts `./tests/integration/fixtures` -> `/data/raw` (same as production path)
 - Sets `SCRAPYD_URL=http://scrapyd-disabled:6800` (unreachable host) to keep startup_crawl_sensor idle
-- Sets `RAW_DATA_DIR=/data/raw` (no nested `/raw` subdirectory) to match fixture mount
 - Disables `frontend` and `scrapyd` services (not needed for integration tests)
 - Removes scrapyd dependency from dagster-code (prevents waiting for disabled service)
+- Test fixture data is seeded into the `raw_books_staging` table by `conftest.py`
+
+### Frontend Infrastructure Tests
+
+```bash
+uv run pytest tests/frontend/ -v
+```
+
+Tests are in `tests/frontend/`:
+- `test_nginx_headers.py` — Nginx security headers tests
 
 ### Frontend Tests (TypeScript)
 
@@ -289,13 +310,15 @@ litmatch/
   scraper/              # Scrapy project for bookmarks.reviews
   src/litmatch/         # Dagster ETL pipeline
     defs/
-      assets/           # Dagster asset definitions (extract, transform, load, validate, embedding)
+      assets/           # Dagster asset definitions (extract, transform, load, validate, embedding, maintenance)
       resources/        # Dagster resources (database, path, scrapyd, embedding_model)
-      schedules/        # Dagster schedules (weekly_etl_schedule)
-      sensors/          # Dagster sensors (data freshness, startup ETL seed)
-      utils/            # ETL utility functions (db_operations, transforms, validation)
+      schedules/        # Dagster schedules (weekly_crawl_schedule)
+      sensors/          # Dagster sensors (staging_data_sensor, startup_crawl_sensor)
+      utils/            # ETL utility functions (db_operations, transforms, validation, staging)
   tests/
     dagster/            # Unit tests for Dagster assets, transforms, validation, sensors, embeddings
+    backend/            # Unit tests for backend API (auth, endpoints, security headers)
+    frontend/           # Frontend infrastructure tests (nginx headers)
     integration/        # Integration tests (require running compose stack)
   compose.yaml          # Podman Compose services
   compose.test.yaml     # Override for integration tests
@@ -355,32 +378,34 @@ Both `Book.embedding` and `Review.embedding` are 384-dimensional pgvector column
 ### Asset Graph
 
 ```
-crawl_books -> raw_books -> validate_raw_books -> cleaned_books -> load_books -> review_embeddings -> book_embeddings
+crawl_books -> raw_books -> validated_books -> cleaned_books -> load_books -> cleanup_staging -> review_embeddings -> book_embeddings
                               \-> validation_errors
 ```
 
-- **crawl_books**: Triggers Scrapyd spider and polls for completion (used by `crawl_and_load` job)
-- **raw_books**: Reads and parses `books.jsonl` from scraper output
-- **validate_raw_books**: Validates required fields, splits into valid records + error records
+- **crawl_books**: Triggers Scrapyd spider and polls for completion (used by `crawl` job)
+- **raw_books**: Reads scraped items from the `raw_books_staging` PostgreSQL table (most recent crawl)
+- **validated_books**: Validates required fields, splits into valid records + error records
 - **cleaned_books**: Transforms dates, ratings, fiction classification, critic names
 - **load_books**: Upserts books, authors, publishers, genres, critics, publications, and reviews into PostgreSQL
+- **cleanup_staging**: Deletes staging table rows older than 30 days (runs after load_books)
 - **review_embeddings**: Encodes review text into 384-dim vectors using sentence-transformers (incremental)
 - **book_embeddings**: Averages review embeddings per book to produce book-level embeddings (incremental)
+- **cleanup_expired_tokens**: Deletes expired refresh tokens (maintenance group, independent)
 
 ### Jobs
 
-- **etl_pipeline**: Full ETL from raw_books through embeddings (no crawl)
-- **crawl_and_load**: Crawl + full ETL including embeddings
+- **etl_pipeline**: Full ETL from raw_books through cleanup_staging and embeddings (no crawl)
+- **crawl**: Trigger Scrapyd crawl only (spider writes to staging table)
 - **embedding_pipeline**: Generate review and book embeddings only
 
 ### Schedules
 
-- **weekly_etl_schedule**: Runs `crawl_and_load` every Sunday at midnight UTC (default: STOPPED, must be activated in Dagster UI)
+- **weekly_crawl_schedule**: Runs `crawl` every Sunday at midnight UTC (default: STOPPED, must be activated in Dagster UI)
 
 ### Sensors
 
-- **data_freshness_sensor**: Ongoing file-watch, triggers ETL when `books.jsonl` is modified
-- **startup_crawl_sensor**: Fires exactly once on first deployment when Scrapyd is healthy, triggers a full crawl-and-load pipeline to seed the database
+- **staging_data_sensor**: Watches the `raw_books_staging` table for new crawl data (new `crawl_job_id`), triggers ETL pipeline
+- **startup_crawl_sensor**: Fires exactly once on first deployment when Scrapyd is healthy, triggers a crawl to seed the database
 
 ## Recommendation Engine
 

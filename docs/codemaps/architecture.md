@@ -10,16 +10,17 @@
                     Scrapy Spider
                     (sitemap-based)
                           |
-                    books.jsonl
+               raw_books_staging table
+                    (PostgreSQL)
                           |
-             Dagster ETL (4-stage pipeline)
-             raw_books → validate → transform → load
+             Dagster ETL (multi-stage pipeline)
+             raw_books → validate → transform → load → embeddings
                           |
                     PostgreSQL + pgvector
                           |
                   FastAPI REST API (port 8000)
                    /auth  /books  /reviews
-                   /genres /ratings
+                   /genres /ratings /recommendations
                           |
                   React SPA (port 5173)
                   Vite + TS + Tailwind v4
@@ -40,21 +41,21 @@
 
 ```
 1. Spider crawls bookmarks.reviews sitemap
-2. Outputs books.jsonl (append mode, incremental)
-3. Dagster reads JSONL → validates → transforms → upserts to PostgreSQL
-4. FastAPI serves paginated books, reviews, genres, ratings
-5. React SPA fetches via /api proxy → renders browse/detail/auth pages
-6. Users rate books → stored in PostgreSQL → future recommender input
+2. Writes scraped items to raw_books_staging table in PostgreSQL
+3. Dagster reads staging table → validates → transforms → upserts to PostgreSQL → generates embeddings
+4. FastAPI serves paginated books, reviews, genres, ratings, recommendations
+5. React SPA fetches via /api proxy → renders browse/detail/auth/profile pages
+6. Users rate books → stored in PostgreSQL → powers embedding-based recommendations
 ```
 
 ## Inter-Component Dependencies
 
 ```
-scraper → books.jsonl (file)
-dagster  → books.jsonl (read) + PostgreSQL (write) + backend.db.models (import)
+scraper → raw_books_staging table (PostgreSQL write)
+dagster  → raw_books_staging (read) + PostgreSQL (write) + backend.db.models (import)
 backend  → PostgreSQL (read/write) + .env (config)
 frontend → backend /api proxy (HTTP)
-recommender → reviews.csv (offline, not yet integrated)
+recommender → reviews.csv (offline, superseded by embedding approach)
 ```
 
 ## Authentication Flow

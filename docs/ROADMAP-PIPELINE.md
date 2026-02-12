@@ -10,7 +10,7 @@
 - Scrapy sitemap spider crawling bookmarks.reviews
 - Incremental scraping via `lastmod` metadata comparison
 - Deployed via Scrapyd in Podman container (port 6800)
-- Output: `books.jsonl` to shared Podman volume
+- Output: writes scraped items to `raw_books_staging` PostgreSQL table
 - Proxy rotation and user-agent middleware configured
 - Data volume: ~13,000 books
 
@@ -45,12 +45,12 @@ crawl_books ──> raw_books ──> validated_books + validation_errors ──
 | DB operation utilities | `defs/utils/db_operations.py` | DONE |
 | `crawl_books` asset (Scrapyd trigger + poll) | `defs/assets/crawl.py` | DONE |
 | `raw_books` asset (deps on crawl_books) | `defs/assets/extract.py` | DONE |
-| `validate_raw_books` multi-asset | `defs/assets/validate.py` | DONE |
+| `validated_books` / `validation_errors` multi-asset | `defs/assets/validate.py` | DONE |
 | `cleaned_books` asset | `defs/assets/transform.py` | DONE |
 | `load_books` asset | `defs/assets/load.py` | DONE |
 | `etl_pipeline` job (ETL + embeddings) | `defs/jobs.py` | DONE |
-| `crawl_and_load` job (crawl + ETL + embeddings) | `defs/jobs.py` | DONE |
-| `data_freshness_sensor` (file-watch) | `defs/sensors/data_freshness.py` | DONE |
+| `crawl` job (trigger Scrapyd crawl only) | `defs/jobs.py` | DONE |
+| `staging_data_sensor` (staging table watch) | `defs/sensors/data_freshness.py` | DONE |
 | `startup_crawl_sensor` (first-deploy seed) | `defs/sensors/startup_crawl.py` | DONE |
 | `definitions.py` wiring (all assets, jobs, sensors, resources) | `definitions.py` | DONE |
 | Test markers in `pyproject.toml` (unit, integration) | `pyproject.toml` | DONE |
@@ -66,7 +66,7 @@ crawl_books ──> raw_books ──> validated_books + validation_errors ──
 | Metadata emission to all assets | DONE | All 5 assets emit structured metadata (record counts, validation rates, etc.) via `MaterializeResult` or `Output` |
 | Retry policy for `load_books` | DONE | `RetryPolicy(max_retries=2, delay=30, backoff=EXPONENTIAL)` added to load_books asset |
 | Write quarantine records to JSONL file | DONE | `validation_errors` persisted to timestamped JSONL files with microsecond-precision filenames |
-| Weekly ETL schedule | DONE | `weekly_etl_schedule` triggers `crawl_and_load` every Sunday at midnight UTC (default STOPPED) |
+| Weekly crawl schedule | DONE | `weekly_crawl_schedule` triggers `crawl` every Sunday at midnight UTC (default STOPPED) |
 
 ### Phase 1 Success Criteria
 - [x] `dg dev` launches and shows the full asset graph (5 assets + 2 jobs)
@@ -91,7 +91,7 @@ crawl_books ──> raw_books ──> validated_books + validation_errors ──
 | dagster-code service (gRPC, depends on db + scrapyd) | `compose.yaml` | DONE |
 | dagster-webserver service (UI on port 3000) | `compose.yaml` | DONE |
 | dagster-daemon service (sensors, depends on backend) | `compose.yaml` | DONE |
-| Shared volume (scrapyd ↔ dagster: `shared_scraper_output`) | `compose.yaml` | DONE |
+| PostgreSQL staging table (scrapyd writes, dagster reads) | `compose.yaml` | DONE |
 | `dagster_storage` volume | `compose.yaml` | DONE |
 | Health checks on all Dagster services | `compose.yaml` | DONE |
 | Startup ordering (db → dagster-code → webserver/daemon) | `compose.yaml` | DONE |
@@ -104,7 +104,7 @@ crawl_books ──> raw_books ──> validated_books + validation_errors ──
 - [x] `podman compose up --build -d` starts all services including Dagster
 - [x] Dagster web UI accessible at http://localhost:3000
 - [x] Pipeline can be triggered from Dagster UI and completes
-- [x] Weekly schedule triggers `crawl_and_load` every Sunday at midnight UTC (default STOPPED)
+- [x] Weekly schedule triggers `crawl` every Sunday at midnight UTC (default STOPPED)
 - [x] Container restarts preserve run history (persistent volume)
 
 ## Pipeline Phase 3: Review + Book Embeddings — DONE
@@ -145,7 +145,7 @@ This phase implements the embedding foundation for the recommender system. Revie
 
 ```
 [Existing Pipeline]
-crawl_books -> raw_books -> validate_raw_books -> cleaned_books -> load_books
+crawl_books -> raw_books -> validated_books -> cleaned_books -> load_books
                                                                        |
                                                                        v
                                                               review_embeddings
@@ -168,9 +168,9 @@ crawl_books -> raw_books -> validate_raw_books -> cleaned_books -> load_books
 **Decision:** Keep scraper in Scrapyd container, orchestrate via HTTP. Dagster polls for completion.
 **Rationale:** Dependency isolation, smaller Dagster container, independent scaling.
 
-### ADR-002: Local Filesystem for Raw Data
-**Decision:** Podman volumes with configurable PathResource. No object storage yet.
-**Migration path:** Replace PathResource with S3IOManager when needed.
+### ADR-002: PostgreSQL Staging Table for Raw Data
+**Decision:** Scrapy writes scraped items to a `raw_books_staging` PostgreSQL table. Dagster reads from this table. Replaced the previous shared Podman volume approach.
+**Migration path:** Replace with S3IOManager when needed.
 
 ### ADR-003: Multi-Asset Quarantine Pattern
 **Decision:** `@multi_asset` produces both valid and quarantined outputs. Pipeline never fails on bad data.
@@ -195,12 +195,12 @@ crawl_books -> raw_books -> validate_raw_books -> cleaned_books -> load_books
 | `test_assets.py` | Asset materialization (extract, validate, transform, load) | DONE |
 | `test_crawl_asset.py` | Crawl asset + jobs module | DONE |
 | `test_scrapyd_resource.py` | ScrapydResource HTTP client | DONE |
-| `test_sensors.py` | Data freshness sensor | DONE |
+| `test_sensors.py` | Staging data sensor | DONE |
 | `test_startup_crawl_sensor.py` | Startup crawl sensor state machine | DONE |
 | `test_embedding_asset.py` | review_embeddings asset (encoding, batching, idempotency, error handling, NULL/empty text filtering) — 20+ tests | DONE |
 | `test_embedding_resource.py` | EmbeddingModelResource (lazy loading, allowlist, encoding) | DONE |
 | `test_book_embedding_asset.py` | book_embeddings asset (averaging, idempotency, engine disposal, correctness) — 18+ tests | DONE |
-| `test_schedule.py` | Weekly ETL schedule (triggers crawl_and_load) | DONE |
+| `test_schedule.py` | Weekly crawl schedule (triggers crawl) | DONE |
 | `test_asset_dependencies.py` | Asset dependency validation | DONE |
 | `compose.test.yaml` | Test database config with isolated volumes | DONE |
 | `test_container_health.py` | Service health and port reachability | DONE |

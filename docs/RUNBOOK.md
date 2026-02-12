@@ -54,6 +54,8 @@ marked as unhealthy.
 
 **Startup ordering:**
 - Backend waits for database to be healthy (`depends_on: condition: service_healthy`)
+- Scrapyd waits for database to be healthy (needs `DATABASE_URL` to write scraped items to the staging table)
+- Dagster code server waits for both database and scrapyd to be healthy
 - Dagster daemon waits for both dagster-code and backend to be healthy (ensures DB schema is initialized before startup_crawl_sensor runs)
 - Backend entrypoint script runs database initialization (table creation + pgvector extension) before launching the FastAPI server
 
@@ -114,38 +116,36 @@ podman compose up dagster-code dagster-webserver dagster-daemon -d
 ### Asset Graph
 
 ```
-crawl_books -> raw_books -> validate_raw_books -> cleaned_books -> load_books -> review_embeddings -> book_embeddings
+crawl_books -> raw_books -> validated_books -> cleaned_books -> load_books -> cleanup_staging -> review_embeddings -> book_embeddings
                               \-> validation_errors
 ```
 
-- **crawl_books**: Triggers Scrapyd spider and polls for completion (used by `crawl_and_load` job)
-- **raw_books**: Reads and parses `books.jsonl` from the scraper output volume
-- **validate_raw_books**: Validates required fields, splits into valid records + error records
+- **crawl_books**: Triggers Scrapyd spider and polls for completion (used by `crawl` job)
+- **raw_books**: Reads scraped items from the `raw_books_staging` PostgreSQL table (most recent crawl)
+- **validated_books**: Validates required fields, splits into valid records + error records
 - **cleaned_books**: Transforms dates, ratings, fiction classification, critic names
 - **load_books**: Upserts books, authors, publishers, genres, critics, publications, and reviews into PostgreSQL
+- **cleanup_staging**: Deletes staging table rows older than 30 days (runs after load_books)
 - **review_embeddings**: Encodes review text into 384-dim dense vectors using sentence-transformers (incremental, skips rows that already have embeddings)
 - **book_embeddings**: Averages review embeddings per book to produce book-level embeddings (incremental)
+- **cleanup_expired_tokens**: Deletes expired refresh tokens (maintenance group, independent)
 
-**Data source path** (configured in compose.yaml as volume mount):
-```
-Podman volume: litmatch_shared_scraper_output
-Container path: /data/raw/books.jsonl
-```
+**Data source**: Scrapy writes items to the `raw_books_staging` table in PostgreSQL (same database as the main application). The staging table has columns: `id`, `crawl_job_id`, `item_data` (JSONB), `created_at`, `url`.
 
 ### Jobs
 
-- **etl_pipeline**: Full ETL from raw_books through embeddings (no crawl)
-- **crawl_and_load**: Crawl + full ETL including embeddings
+- **etl_pipeline**: Full ETL from raw_books through cleanup_staging and embeddings (no crawl)
+- **crawl**: Trigger Scrapyd crawl only (spider writes to staging table)
 - **embedding_pipeline**: Generate review and book embeddings only (useful for re-embedding without re-running ETL)
 
 ### Schedules
 
-- **weekly_etl_schedule**: Runs `crawl_and_load` every Sunday at midnight UTC (default: STOPPED, must be activated in Dagster UI)
+- **weekly_crawl_schedule**: Runs `crawl` every Sunday at midnight UTC (default: STOPPED, must be activated in Dagster UI)
 
 ### Sensors
 
-- **data_freshness_sensor**: Ongoing file-watch, triggers ETL when `books.jsonl` is modified
-- **startup_crawl_sensor**: Fires exactly once on first deployment when Scrapyd is healthy, triggers a full crawl-and-load pipeline to seed the database
+- **staging_data_sensor**: Watches the `raw_books_staging` table for new crawl data (new `crawl_job_id`), triggers ETL pipeline
+- **startup_crawl_sensor**: Fires exactly once on first deployment when Scrapyd is healthy, triggers a crawl to seed the database
 
 ### Embedding Pipeline
 
@@ -188,7 +188,7 @@ curl http://localhost:6800/schedule.json -d project=bookmarks -d spider=bookmark
 curl http://localhost:6800/listjobs.json?project=bookmarks
 ```
 
-Output is written to the `shared_scraper_output` Podman volume as `books.jsonl`.
+Scraped items are written to the `raw_books_staging` PostgreSQL table (Scrapyd pipeline writes directly to the database).
 
 ### Scraper Configuration
 
@@ -227,18 +227,18 @@ Output is written to the `shared_scraper_output` Podman volume as `books.jsonl`.
 4. Check that the backend is actually serving routes (visit `http://localhost:8000/docs`)
 5. Check CORS configuration in `.env` (`CORS_ORIGINS` should include `http://localhost:5173`)
 
-### Dagster can't find books.jsonl
+### Dagster can't find staging data
 
-**Symptom**: `Raw data path does not exist` error in Dagster logs or asset materialization UI
+**Symptom**: `No records found in staging table` warning in Dagster logs during `raw_books` asset materialization
 
 **Fix**:
-1. Run the scraper first to generate `books.jsonl`: `make run-spider`
-2. Check the Podman volume: `podman volume inspect litmatch_shared_scraper_output`
-3. Verify the volume mount in `compose.yaml` (should mount to `/data/raw` in dagster containers)
-4. Manually inspect volume contents:
+1. Run the scraper first to populate the staging table: `make run-spider`
+2. Verify the staging table exists and has data:
    ```bash
-   podman run --rm -v litmatch_shared_scraper_output:/data alpine ls -la /data/raw
+   podman compose exec db psql -U bookuser -d bookdb -c "SELECT count(*) FROM raw_books_staging;"
    ```
+3. Check that Scrapyd has `DATABASE_URL` configured in `compose.yaml` (required to write to staging table)
+4. Check Scrapyd logs for pipeline errors: `podman compose logs scrapyd`
 
 ### Dagster startup_crawl_sensor not triggering
 
@@ -250,7 +250,7 @@ Output is written to the `shared_scraper_output` Podman volume as `books.jsonl`.
 3. Verify the backend service is healthy: `podman compose ps backend`
 4. Ensure dagster-daemon depends on both `dagster-code` and `backend` in `compose.yaml`
 5. Check that database initialization completed: `podman compose logs backend | grep "Database initialized"`
-6. Manually trigger crawl_and_load job from Dagster UI: http://localhost:3000
+6. Manually trigger the crawl job from Dagster UI: http://localhost:3000
 
 ### Port conflict between Makefile and Podman Compose
 
@@ -447,7 +447,7 @@ Check the Dagster UI at http://localhost:3000 for:
 - Asset materialization history
 - Run logs and error details
 - Pipeline scheduling status
-- Sensor status (data_freshness_sensor, startup_crawl_sensor)
+- Sensor status (staging_data_sensor, startup_crawl_sensor)
 - Embedding pipeline progress (review_embeddings, book_embeddings)
 
 ```bash
@@ -467,8 +467,8 @@ curl http://localhost:6800/
 # List all jobs
 curl http://localhost:6800/listjobs.json?project=bookmarks
 
-# Check scraper output
-podman run --rm -v litmatch_shared_scraper_output:/data alpine cat /data/raw/books.jsonl | wc -l
+# Check staging table row count
+podman compose exec db psql -U bookuser -d bookdb -c "SELECT crawl_job_id, count(*) FROM raw_books_staging GROUP BY crawl_job_id ORDER BY min(created_at) DESC;"
 ```
 
 ## Performance Tuning
@@ -524,7 +524,7 @@ When services fail to start, check in this order:
 2. **Database**: `podman compose ps db` — must be healthy before backend starts
 3. **Backend**: `curl http://localhost:8000/health` — must return `{"status": "ok"}`
 4. **Dagster**: `curl http://localhost:3000/server_info` — webserver must be running
-5. **Volumes**: `podman volume ls` — ensure volumes exist
+5. **Staging table**: `podman compose exec db psql -U bookuser -d bookdb -c "SELECT count(*) FROM raw_books_staging;"` — verify staging data
 6. **Networks**: `podman network ls` — ensure `litnet` exists (for Makefile targets)
 7. **Ports**: `lsof -i :5432 -i :8000 -i :3000` — check for port conflicts
 8. **Logs**: `make logs` — check for error messages

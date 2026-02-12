@@ -32,7 +32,7 @@ Five implementation phases, each independently shippable:
 - No embedding columns exist yet on any table
 
 **Dagster pipeline** (`src/litmatch/`):
-- Five-stage asset graph: `crawl_books` -> `raw_books` -> `validate_raw_books` -> `cleaned_books` -> `load_books`
+- Five-stage asset graph: `crawl_books` -> `raw_books` -> `validated_books` -> `cleaned_books` -> `load_books`
 - `DatabaseResource` at `src/litmatch/defs/resources/database.py` provides engine access
 - `dagster-spec.md` already sketches a `book_embeddings` asset and `EmbeddingModelResource` for Phase 3 -- this roadmap supersedes that sketch with review-level granularity
 
@@ -264,7 +264,7 @@ The recommendation pipeline adds three new assets downstream of `load_books`:
 
 ```
 [Existing Pipeline]
-crawl_books -> raw_books -> validate_raw_books -> cleaned_books -> load_books
+crawl_books -> raw_books -> validated_books -> cleaned_books -> load_books
                                                                        |
                                                                        v
                                                               review_embeddings
@@ -1160,7 +1160,7 @@ def get_popular_books(
 
 ### Test Fixtures
 
-The existing test fixture at `tests/integration/fixtures/books.jsonl` contains 3 sample books. Extend with:
+The integration test fixtures (seeded into the `raw_books_staging` table by `conftest.py`) contain sample books. Extend with:
 - At least 2 fiction and 2 non-fiction books with reviews
 - Pre-computed mock embeddings (fixed vectors) for deterministic nearest-neighbor testing
 - A test user with 6+ ratings spanning both fiction and non-fiction
@@ -1287,7 +1287,7 @@ The existing recommender at `recommender/recommender.py`:
 
 2. ~~**Should books with `is_fiction IS NULL` be included in both fiction and nonfiction results, or excluded?**~~ **Resolved by implementation**: The current `find_nearest_books()` and `get_popular_books()` functions filter by `is_fiction` when a category is specified. Books with NULL classification are excluded from category-specific results but included when `category="all"`.
 
-3. ~~**Should the embedding pipeline run automatically after every ETL load, or on a separate schedule?**~~ **Resolved**: Embedding assets depend on `load_books` via Dagster dependency graph. The `etl_pipeline` and `crawl_and_load` jobs both include embedding assets. No separate schedule needed.
+3. ~~**Should the embedding pipeline run automatically after every ETL load, or on a separate schedule?**~~ **Resolved**: Embedding assets depend on `load_books` via Dagster dependency graph. The `etl_pipeline` job includes embedding assets. The `crawl` job triggers the spider only; the `staging_data_sensor` then triggers the ETL pipeline. No separate schedule needed.
 
 4. ~~**What is the minimum number of embedded reviews a book needs to have a meaningful embedding?**~~ **Resolved**: No minimum threshold — a book with 1 review gets that review's embedding directly. Implemented as designed.
 

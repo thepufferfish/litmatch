@@ -4,7 +4,7 @@
 
 LitMatch is a book discovery and recommendation platform with five components:
 
-1. **Scraper** — Crawls bookmarks.reviews, outputs `books.jsonl`
+1. **Scraper** — Crawls bookmarks.reviews, writes to PostgreSQL staging table
 2. **ETL Pipeline** — Dagster orchestration: validate, transform, load to PostgreSQL
 3. **Backend** — FastAPI REST API with JWT auth
 4. **Frontend** — React SPA for browsing, searching, rating books
@@ -58,14 +58,14 @@ Users can register, log in, and rate books.
 Dagster pipeline runs fully automated in Podman containers with sensor-driven execution.
 
 - Dagster scraper trigger via `crawl_books` asset (ScrapydResource)
-- Two jobs: `etl_pipeline` (ETL-only) and `crawl_and_load` (full pipeline)
-- Two sensors: `data_freshness_sensor` (file-watch) and `startup_crawl_sensor` (first-deploy seed)
+- Three jobs: `etl_pipeline` (full ETL + embeddings), `crawl` (trigger Scrapyd only), `embedding_pipeline` (embeddings only)
+- Two sensors: `staging_data_sensor` (staging table watch) and `startup_crawl_sensor` (first-deploy seed)
 - Podman Compose: dagster-code (gRPC), dagster-webserver (UI), dagster-daemon (sensors)
 - Health checks and startup ordering for all services
 - Integration test suite with `compose.test.yaml`
 
 **All optional enhancements completed:**
-- Weekly schedule (`crawl_and_load` every Sunday at midnight UTC, default STOPPED)
+- Weekly schedule (`weekly_crawl_schedule` triggers `crawl` every Sunday at midnight UTC, default STOPPED)
 - Asset metadata emission for Dagster UI (record counts, validation rates)
 - Retry policies on `load_books` (max 2 retries, exponential backoff)
 - Quarantine JSONL file output (timestamped files with error annotations)
@@ -89,7 +89,7 @@ Users receive book recommendations based on their ratings, powered by sentence-t
 - Backend: `GET /recommendations/` endpoint (auth required, category filter, rate limited), `GET /users/me`
 - Frontend: ProfilePage with fiction/nonfiction tabs, `useRecommendations` hook, `RecommendationGrid` component
 - User embeddings filtered by category (fiction/nonfiction) for more targeted recommendations
-- Weekly schedule updated to trigger `crawl_and_load` instead of `etl_pipeline`
+- Weekly schedule triggers `crawl` job; `staging_data_sensor` then triggers ETL pipeline
 
 **Remaining:**
 - Backend Phase 4: `GET /books/semantic-search` endpoint
