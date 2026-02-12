@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Literal
 
 from fastapi import Depends, FastAPI, HTTPException, Path, Query, Request, Response
@@ -578,14 +578,14 @@ def add_rating(
     rating = session.exec(stmt).first()
     if rating:
         rating.rating = rating_in.rating
-        rating.updated_at = datetime.now()
+        rating.updated_at = datetime.now(timezone.utc)
     else:
         rating = UserRating(
             user_id=current_user.id,
             book_id=rating_in.book_id,
             rating=rating_in.rating,
-            created_at=datetime.now(),
-            updated_at=datetime.now(),
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
         )
     session.add(rating)
     session.commit()

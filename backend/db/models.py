@@ -3,9 +3,9 @@ from typing import Generic, Literal, TypeVar
 
 from pgvector.sqlalchemy import Vector
 from pydantic import BaseModel, field_validator
-from sqlalchemy import Column
+from sqlalchemy import Column, TIMESTAMP
 from sqlmodel import Field, Relationship, SQLModel
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 
 T = TypeVar("T")
 
@@ -41,7 +41,10 @@ class Book(SQLModel, table=True):
     url: str = Field(unique=True)
     cover: str | None
     is_fiction: bool | None = Field(default=None)
-    last_scraped: datetime | None = Field(default=datetime.now())
+    last_scraped: datetime | None = Field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        sa_column=Column(TIMESTAMP(timezone=True)),
+    )
     embedding: list[float] | None = Field(
         default=None,
         sa_column=Column(Vector(384)),
@@ -190,8 +193,8 @@ class UserRating(SQLModel, table=True):
     user_id: int = Field(foreign_key='user.id')
     book_id: int = Field(foreign_key='book.id')
     rating: int
-    created_at: datetime
-    updated_at: datetime
+    created_at: datetime = Field(sa_column=Column(TIMESTAMP(timezone=True)))
+    updated_at: datetime = Field(sa_column=Column(TIMESTAMP(timezone=True)))
 
     user: User = Relationship(back_populates='user_ratings')
     book: Book = Relationship(back_populates='user_ratings')
@@ -201,8 +204,11 @@ class RefreshToken(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
     user_id: int = Field(foreign_key='user.id')
     token_hash: str = Field(unique=True)
-    expires_at: datetime
-    created_at: datetime = Field(default_factory=datetime.now)
+    expires_at: datetime = Field(sa_column=Column(TIMESTAMP(timezone=True)))
+    created_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        sa_column=Column(TIMESTAMP(timezone=True)),
+    )
 
     user: User = Relationship(back_populates='refresh_tokens')
 
