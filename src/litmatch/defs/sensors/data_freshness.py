@@ -7,7 +7,7 @@ import dagster as dg
 
 from litmatch.defs.jobs import etl_pipeline
 from litmatch.defs.resources.database import DatabaseResource
-from litmatch.defs.utils.staging import ensure_staging_table, get_latest_crawl_job_id
+from litmatch.defs.utils.staging import get_latest_crawl_job_id
 
 
 @dg.sensor(
@@ -15,6 +15,7 @@ from litmatch.defs.utils.staging import ensure_staging_table, get_latest_crawl_j
     job=etl_pipeline,
     minimum_interval_seconds=60,
     description="Watches the staging table for new crawl data and triggers ETL.",
+    default_status=dg.DefaultSensorStatus.RUNNING,
 )
 def staging_data_sensor(
     context: dg.SensorEvaluationContext,
@@ -34,8 +35,6 @@ def staging_data_sensor(
     """
     engine = database.get_engine()
     try:
-        ensure_staging_table(engine)
-
         latest_job_id = get_latest_crawl_job_id(engine)
 
         if latest_job_id is None:

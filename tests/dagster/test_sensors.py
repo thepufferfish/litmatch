@@ -54,8 +54,7 @@ class TestStagingDataSensorLogic:
     """Tests for the sensor evaluation logic."""
 
     @patch("litmatch.defs.sensors.data_freshness.get_latest_crawl_job_id")
-    @patch("litmatch.defs.sensors.data_freshness.ensure_staging_table")
-    def test_first_run_with_data_triggers_pipeline(self, mock_ensure, mock_get_latest) -> None:
+    def test_first_run_with_data_triggers_pipeline(self, mock_get_latest) -> None:
         mock_get_latest.return_value = "job-abc-123"
         db_resource = DatabaseResource(connection_string="postgresql://test:test@localhost/test")
         mock_engine = _make_mock_engine("job-abc-123")
@@ -69,8 +68,7 @@ class TestStagingDataSensorLogic:
         assert result.cursor == "job-abc-123"
 
     @patch("litmatch.defs.sensors.data_freshness.get_latest_crawl_job_id")
-    @patch("litmatch.defs.sensors.data_freshness.ensure_staging_table")
-    def test_unchanged_data_does_not_trigger(self, mock_ensure, mock_get_latest) -> None:
+    def test_unchanged_data_does_not_trigger(self, mock_get_latest) -> None:
         mock_get_latest.return_value = "job-abc-123"
         db_resource = DatabaseResource(connection_string="postgresql://test:test@localhost/test")
         mock_engine = _make_mock_engine("job-abc-123")
@@ -86,8 +84,7 @@ class TestStagingDataSensorLogic:
         assert result.cursor == "job-abc-123"
 
     @patch("litmatch.defs.sensors.data_freshness.get_latest_crawl_job_id")
-    @patch("litmatch.defs.sensors.data_freshness.ensure_staging_table")
-    def test_new_crawl_triggers_pipeline(self, mock_ensure, mock_get_latest) -> None:
+    def test_new_crawl_triggers_pipeline(self, mock_get_latest) -> None:
         mock_get_latest.return_value = "job-new-456"
         db_resource = DatabaseResource(connection_string="postgresql://test:test@localhost/test")
         mock_engine = _make_mock_engine("job-new-456")
@@ -104,8 +101,7 @@ class TestStagingDataSensorLogic:
         assert result.cursor == "job-new-456"
 
     @patch("litmatch.defs.sensors.data_freshness.get_latest_crawl_job_id")
-    @patch("litmatch.defs.sensors.data_freshness.ensure_staging_table")
-    def test_empty_staging_table_skips(self, mock_ensure, mock_get_latest) -> None:
+    def test_empty_staging_table_skips(self, mock_get_latest) -> None:
         mock_get_latest.return_value = None
         db_resource = DatabaseResource(connection_string="postgresql://test:test@localhost/test")
         mock_engine = _make_mock_engine(None)

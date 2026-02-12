@@ -29,6 +29,7 @@ CURSOR_COMPLETED = "completed"
         "Fires exactly once on first deployment when Scrapyd is healthy, "
         "triggering a full crawl-and-load pipeline to seed the database."
     ),
+    default_status=dg.DefaultSensorStatus.RUNNING,
     required_resource_keys=set(),
 )
 def startup_crawl_sensor(
