@@ -51,6 +51,7 @@ markers = [
     "integration: Integration tests (requires running containers)",
 ]
 testpaths = ["tests"]
+pythonpath = ["scraper"]
 
 [tool.dg]
 directory_type = "project"

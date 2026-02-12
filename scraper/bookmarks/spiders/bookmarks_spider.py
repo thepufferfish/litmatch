@@ -1,7 +1,18 @@
+import logging
 import os
-import json
+from datetime import datetime, timezone
+
+import psycopg2
 from scrapy.spiders import SitemapSpider
-from datetime import datetime
+
+logger = logging.getLogger(__name__)
+
+FETCH_METADATA_SQL = """
+SELECT url, last_scraped
+FROM book
+WHERE last_scraped IS NOT NULL
+"""
+
 
 class BookmarksSpider(SitemapSpider):
     name = 'bookmarks'
@@ -13,21 +24,22 @@ class BookmarksSpider(SitemapSpider):
     def from_crawler(cls, crawler, *args, **kwargs):
         spider = super(BookmarksSpider, cls).from_crawler(crawler, *args, **kwargs)
         spider.metadata = spider.fetch_metadata()
-        spider.default_date = '2010-01-01T00:00:00-05:00'
         return spider
-
-    def close(self, reason):
-        with open("data/metadata/metadata.json", "w") as f:
-            json.dump(self.metadata, f, indent=4)
 
     def sitemap_filter(self, entries):
         for entry in entries:
+            loc = entry.get('loc')
+            if not loc:
+                logger.warning("Sitemap entry missing 'loc', skipping: %s", entry)
+                continue
+
             try:
                 lastmod = datetime.strptime(entry["lastmod"], '%Y-%m-%dT%H:%M:%S%z')
-            except:
-                lastmod = datetime.now().astimezone()
-            lastscrape = datetime.strptime(self.metadata.get(entry['loc'], self.default_date), '%Y-%m-%dT%H:%M:%S%z') 
-            if lastmod > lastscrape:
+            except (KeyError, ValueError):
+                lastmod = datetime.now(timezone.utc)
+
+            lastscrape = self.metadata.get(loc)
+            if lastscrape is None or lastmod > lastscrape:
                 yield entry
 
     def parse_bookmark(self, response):
@@ -48,13 +60,13 @@ class BookmarksSpider(SitemapSpider):
             'genres': genres,
             'url': response.url,
             'cover': cover,
-            'last_scraped': datetime.now().astimezone(),
+            'last_scraped': datetime.now(timezone.utc),
             'reviews': []
         }
 
         see_all_reviews_link = response.xpath('//a[contains(text(), "See All Reviews")]/@href').get()
-        see_all_reviews_link = see_all_reviews_link.replace('//all', '/all')
         if see_all_reviews_link:
+            see_all_reviews_link = see_all_reviews_link.replace('//all', '/all')
             request = response.follow(see_all_reviews_link, self.parse_reviews)
             request.meta['book_data'] = book_data
             yield request
@@ -82,13 +94,49 @@ class BookmarksSpider(SitemapSpider):
 
         yield book_data
 
-    def fetch_metadata(self):
-        fn = "data/metadata/metadata.json"
-        if os.path.exists(fn):
-            with open(fn) as f:
-                metadata = json.load(f)
-                return metadata
-        elif not os.path.exists("data/metadata"):
-            os.makedirs("data/metadata")
-        return {}
-        
+    def fetch_metadata(self) -> dict[str, datetime]:
+        """Query the book table for url/last_scraped pairs.
+
+        Returns a dict mapping book URLs to their last_scraped datetime.
+        Returns an empty dict if DATABASE_URL is not set, the database is
+        unreachable, or the book table does not exist.
+        """
+        database_url = os.environ.get("DATABASE_URL")
+        if not database_url:
+            logger.info("DATABASE_URL not set; starting with empty metadata")
+            return {}
+
+        try:
+            conn = psycopg2.connect(database_url, connect_timeout=10)
+        except psycopg2.OperationalError:
+            logger.warning(
+                "Could not connect to database for metadata; "
+                "starting with empty metadata",
+            )
+            return {}
+
+        try:
+            with conn.cursor() as cursor:
+                cursor.execute(FETCH_METADATA_SQL)
+                rows = cursor.fetchall()
+
+            metadata: dict[str, datetime] = {}
+            for url, last_scraped in rows:
+                # The book.last_scraped column stores UTC datetimes.
+                # Naive datetimes from the DB are assumed UTC.
+                if last_scraped.tzinfo is None:
+                    last_scraped = last_scraped.replace(tzinfo=timezone.utc)
+                metadata[url] = last_scraped
+
+            logger.info(
+                "Loaded metadata for %d books from database", len(metadata)
+            )
+            return metadata
+        except psycopg2.Error:
+            logger.warning(
+                "Database error loading metadata; "
+                "starting with empty metadata",
+            )
+            return {}
+        finally:
+            conn.close()
