@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 import {
   useSearchParams,
   useParams,
@@ -7,6 +7,8 @@ import {
 } from "react-router";
 import { useBooks, useSearchBooks } from "@/hooks/useBooks";
 import { useGenres } from "@/hooks/useGenres";
+import { useUserRatingsMap, useSubmitRating, useDeleteRating } from "@/hooks/useRatings";
+import { useAuth } from "@/context/AuthContext";
 import { BookGrid } from "@/components/BookGrid";
 import { GenreSidebar } from "@/components/GenreSidebar";
 import { SearchBar } from "@/components/SearchBar";
@@ -22,6 +24,23 @@ export function BrowsePage() {
   const { slug: genreSlug } = useParams<{ slug: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
+
+  const { user, isAuthenticated } = useAuth();
+  const { data: userRatings } = useUserRatingsMap(user?.id);
+  const { mutate: submitRating } = useSubmitRating(user?.id);
+  const { mutate: deleteRating } = useDeleteRating(user?.id);
+
+  const handleRate = useCallback(
+    (bookId: number, rating: number | null) => {
+      if (rating === null) {
+        deleteRating(bookId);
+        return;
+      }
+      if (!Number.isInteger(rating) || rating < 1 || rating > 5) return;
+      submitRating({ book_id: bookId, rating });
+    },
+    [submitRating, deleteRating]
+  );
 
   const { data: genres } = useGenres();
 
@@ -213,7 +232,13 @@ export function BrowsePage() {
           />
         ) : (
           <>
-            <BookGrid books={items} isLoading={isLoading} />
+            <BookGrid
+              books={items}
+              isLoading={isLoading}
+              userRatings={userRatings}
+              onRate={handleRate}
+              isAuthenticated={isAuthenticated}
+            />
             <Pagination
               currentPage={page}
               totalPages={totalPages}

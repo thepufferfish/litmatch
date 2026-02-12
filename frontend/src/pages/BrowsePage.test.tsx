@@ -56,6 +56,7 @@ const mockGenres: Genre[] = [
 const mockUseBooks = vi.fn();
 const mockUseSearchBooks = vi.fn();
 const mockUseGenres = vi.fn();
+const mockSubmitRating = vi.fn();
 
 vi.mock("@/hooks/useBooks", () => ({
   useBooks: (...args: unknown[]) => mockUseBooks(...args),
@@ -64,6 +65,30 @@ vi.mock("@/hooks/useBooks", () => ({
 
 vi.mock("@/hooks/useGenres", () => ({
   useGenres: () => mockUseGenres(),
+}));
+
+vi.mock("@/hooks/useRatings", () => ({
+  useUserRatingsMap: () => ({ data: undefined, isLoading: false }),
+  useSubmitRating: () => ({
+    mutate: mockSubmitRating,
+    isPending: false,
+  }),
+  useDeleteRating: () => ({
+    mutate: vi.fn(),
+    isPending: false,
+  }),
+}));
+
+vi.mock("@/context/AuthContext", () => ({
+  useAuth: () => ({
+    user: null,
+    isAuthenticated: false,
+    isLoading: false,
+    login: vi.fn(),
+    register: vi.fn(),
+    logout: vi.fn(),
+    getAccessToken: vi.fn(),
+  }),
 }));
 
 vi.mock("@/components/BookGrid", () => ({

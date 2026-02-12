@@ -1,7 +1,7 @@
 import { useParams, Link, useNavigate } from "react-router";
 import { useBook } from "@/hooks/useBooks";
 import { useReviews } from "@/hooks/useReviews";
-import { useUserRating, useSubmitRating } from "@/hooks/useRatings";
+import { useUserRating, useSubmitRating, useDeleteRating } from "@/hooks/useRatings";
 import { useAuth } from "@/context/AuthContext";
 import { CriticRatingBadge } from "@/components/CriticRatingBadge";
 import { ReviewList } from "@/components/ReviewList";
@@ -22,7 +22,9 @@ export function BookDetailPage() {
     user?.id
   );
   const { mutate: submitRating, isPending: isSubmittingRating } =
-    useSubmitRating();
+    useSubmitRating(user?.id);
+  const { mutate: deleteRating, isPending: isDeletingRating } =
+    useDeleteRating(user?.id);
 
   if (bookLoading) {
     return (
@@ -197,15 +199,30 @@ export function BookDetailPage() {
               <div className="flex items-center gap-4">
                 <StarRating
                   value={existingRating?.rating ?? 0}
-                  onChange={(rating) =>
-                    submitRating({ book_id: bookId, rating })
-                  }
-                  disabled={isSubmittingRating}
+                  onChange={(rating) => {
+                    if (rating === null) {
+                      deleteRating(bookId);
+                    } else {
+                      submitRating({ book_id: bookId, rating });
+                    }
+                  }}
+                  disabled={isSubmittingRating || isDeletingRating}
                 />
                 {existingRating && (
-                  <span className="text-sm text-muted">
-                    You rated this {existingRating.rating}/5
-                  </span>
+                  <>
+                    <span className="text-sm text-muted">
+                      You rated this {existingRating.rating}/5
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => deleteRating(bookId)}
+                      disabled={isDeletingRating}
+                      className="text-sm text-muted hover:text-red-600 transition-colors cursor-pointer disabled:opacity-50"
+                      aria-label={`Remove rating for ${book.title}`}
+                    >
+                      Remove
+                    </button>
+                  </>
                 )}
               </div>
             )}

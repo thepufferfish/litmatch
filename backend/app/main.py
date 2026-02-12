@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Literal
 
-from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response
+from fastapi import Depends, FastAPI, HTTPException, Path, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import bcrypt
@@ -591,3 +591,25 @@ def add_rating(
     session.commit()
     session.refresh(rating)
     return rating
+
+
+@app.delete("/ratings/{book_id}", status_code=204)
+@limiter.limit("30/minute")
+def delete_rating(
+    request: Request,
+    book_id: int = Path(ge=1),
+    *,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+):
+    """Delete the current user's rating for the given book."""
+    stmt = (
+        select(UserRating)
+        .where(UserRating.user_id == current_user.id)
+        .where(UserRating.book_id == book_id)
+    )
+    rating = session.exec(stmt).first()
+    if not rating:
+        raise HTTPException(status_code=404, detail="Rating not found")
+    session.delete(rating)
+    session.commit()

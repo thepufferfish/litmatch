@@ -11,6 +11,7 @@ const mockUseUserProfile = vi.fn();
 const mockUseRecommendations = vi.fn();
 const mockUseUserRatedBooks = vi.fn();
 const mockUseUserRatings = vi.fn();
+const mockDeleteRating = vi.fn();
 
 vi.mock("@/context/AuthContext", () => ({
   useAuth: () => mockUseAuth(),
@@ -27,6 +28,13 @@ vi.mock("@/hooks/useRecommendations", () => ({
 vi.mock("@/hooks/useUserRatedBooks", () => ({
   useUserRatedBooks: (...args: unknown[]) => mockUseUserRatedBooks(...args),
   useUserRatings: (...args: unknown[]) => mockUseUserRatings(...args),
+}));
+
+vi.mock("@/hooks/useRatings", () => ({
+  useDeleteRating: (_userId?: number) => ({
+    mutate: mockDeleteRating,
+    isPending: false,
+  }),
 }));
 
 // -- Test data ---------------------------------------------------------------
@@ -270,5 +278,30 @@ describe("ProfilePage", () => {
 
     const skeletons = container.querySelectorAll(".skeleton-shimmer");
     expect(skeletons.length).toBeGreaterThan(0);
+  });
+
+  it("shows Remove button next to rated books", () => {
+    setupAuthenticatedMocks();
+
+    renderProfilePage();
+
+    const removeBtn = screen.getByRole("button", {
+      name: /remove rating for test book/i,
+    });
+    expect(removeBtn).toBeInTheDocument();
+  });
+
+  it("calls deleteRating when Remove button is clicked", async () => {
+    const user = (await import("@testing-library/user-event")).default.setup();
+    setupAuthenticatedMocks();
+
+    renderProfilePage();
+
+    const removeBtn = screen.getByRole("button", {
+      name: /remove rating for test book/i,
+    });
+    await user.click(removeBtn);
+
+    expect(mockDeleteRating).toHaveBeenCalledWith(1);
   });
 });

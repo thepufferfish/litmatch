@@ -9,6 +9,10 @@ interface RecommendationGridProps {
   fictionData: RecommendationResponse;
   nonfictionData: RecommendationResponse;
   isLoading: boolean;
+  userRatings?: Map<number, number>;
+  onRate?: (bookId: number, rating: number | null) => void;
+  isRatingDisabled?: boolean;
+  isAuthenticated?: boolean;
 }
 
 const STRATEGY_LABELS: Record<RecommendationStrategy, string> = {
@@ -20,6 +24,10 @@ export function RecommendationGrid({
   fictionData,
   nonfictionData,
   isLoading,
+  userRatings,
+  onRate,
+  isRatingDisabled,
+  isAuthenticated,
 }: RecommendationGridProps) {
   const [activeTab, setActiveTab] = useState<Tab>("fiction");
 
@@ -74,7 +82,14 @@ export function RecommendationGrid({
       ) : (
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
           {activeData.items.map((book) => (
-            <BookCard key={book.id} book={book} />
+            <BookCard
+              key={book.id}
+              book={book}
+              userRating={userRatings?.get(book.id)}
+              onRate={onRate}
+              isRatingDisabled={isRatingDisabled}
+              isAuthenticated={isAuthenticated}
+            />
           ))}
         </div>
       )}

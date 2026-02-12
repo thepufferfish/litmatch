@@ -58,4 +58,34 @@ describe("StarRating", () => {
     expect(buttons[0]).toHaveAttribute("aria-label", "Rate 1 star");
     expect(buttons[4]).toHaveAttribute("aria-label", "Rate 5 stars");
   });
+
+  it("calls onChange with null when clicking the currently selected star", async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+    render(<StarRating value={3} onChange={onChange} />);
+
+    const star3 = screen.getByTestId("star-3");
+    await user.click(star3);
+    expect(onChange).toHaveBeenCalledWith(null);
+  });
+
+  it("shows 'Clear rating' aria-label on the selected star", () => {
+    render(<StarRating value={3} onChange={vi.fn()} />);
+
+    const star3 = screen.getByTestId("star-3");
+    expect(star3).toHaveAttribute("aria-label", "Clear rating");
+    // Other stars should still have normal labels
+    const star2 = screen.getByTestId("star-2");
+    expect(star2).toHaveAttribute("aria-label", "Rate 2 stars");
+  });
+
+  it("calls onChange with the star number when clicking a non-selected star", async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+    render(<StarRating value={3} onChange={onChange} />);
+
+    const star5 = screen.getByTestId("star-5");
+    await user.click(star5);
+    expect(onChange).toHaveBeenCalledWith(5);
+  });
 });

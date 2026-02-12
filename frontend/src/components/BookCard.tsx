@@ -1,9 +1,14 @@
 import { Link } from "react-router";
 import type { Book } from "@/types";
 import { CriticRatingBadge } from "@/components/CriticRatingBadge";
+import { InlineRating } from "@/components/InlineRating";
 
 interface BookCardProps {
   book: Book;
+  userRating?: number;
+  onRate?: (bookId: number, rating: number | null) => void;
+  isRatingDisabled?: boolean;
+  isAuthenticated?: boolean;
 }
 
 function BookPlaceholderCover() {
@@ -26,7 +31,13 @@ function BookPlaceholderCover() {
   );
 }
 
-export function BookCard({ book }: BookCardProps) {
+export function BookCard({
+  book,
+  userRating,
+  onRate,
+  isRatingDisabled,
+  isAuthenticated,
+}: BookCardProps) {
   const sortedGenres = [...(book.genres ?? [])].sort((a, b) =>
     a.name.localeCompare(b.name)
   );
@@ -90,6 +101,17 @@ export function BookCard({ book }: BookCardProps) {
               </span>
             )}
           </div>
+        )}
+
+        {/* Inline rating */}
+        {isAuthenticated !== undefined && (
+          <InlineRating
+            bookId={book.id}
+            userRating={userRating}
+            onRate={onRate}
+            isDisabled={isRatingDisabled}
+            isAuthenticated={isAuthenticated}
+          />
         )}
       </div>
     </Link>

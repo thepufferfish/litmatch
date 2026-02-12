@@ -37,6 +37,7 @@ const mockUseBook = vi.fn();
 const mockUseReviews = vi.fn();
 const mockUseUserRating = vi.fn();
 const mockSubmitRating = vi.fn();
+const mockDeleteRating = vi.fn();
 const mockUseAuth = vi.fn();
 
 vi.mock("@/hooks/useBooks", () => ({
@@ -49,8 +50,12 @@ vi.mock("@/hooks/useReviews", () => ({
 
 vi.mock("@/hooks/useRatings", () => ({
   useUserRating: (...args: unknown[]) => mockUseUserRating(...args),
-  useSubmitRating: () => ({
+  useSubmitRating: (_userId?: number) => ({
     mutate: mockSubmitRating,
+    isPending: false,
+  }),
+  useDeleteRating: (_userId?: number) => ({
+    mutate: mockDeleteRating,
     isPending: false,
   }),
 }));
@@ -511,6 +516,45 @@ describe("BookDetailPage - Rating Section", () => {
     renderWithProviders();
 
     expect(mockUseUserRating).toHaveBeenCalledWith(42, undefined);
+  });
+
+  it("shows Remove button when user has existing rating", () => {
+    setupDefaultMocks({
+      isAuthenticated: true,
+      user: { id: 10, username: "reader" },
+      existingRating: mockRating,
+    });
+
+    renderWithProviders();
+
+    expect(screen.getByText("Remove")).toBeInTheDocument();
+  });
+
+  it("calls deleteRating when Remove button is clicked", async () => {
+    const user = userEvent.setup();
+    setupDefaultMocks({
+      isAuthenticated: true,
+      user: { id: 10, username: "reader" },
+      existingRating: mockRating,
+    });
+
+    renderWithProviders();
+
+    await user.click(screen.getByText("Remove"));
+
+    expect(mockDeleteRating).toHaveBeenCalledWith(42);
+  });
+
+  it("does not show Remove button when no rating exists", () => {
+    setupDefaultMocks({
+      isAuthenticated: true,
+      user: { id: 10, username: "reader" },
+      existingRating: null,
+    });
+
+    renderWithProviders();
+
+    expect(screen.queryByText("Remove")).not.toBeInTheDocument();
   });
 });
 

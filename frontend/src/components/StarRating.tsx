@@ -2,15 +2,17 @@ import { useState } from "react";
 
 interface StarRatingProps {
   value: number;
-  onChange?: (rating: number) => void;
+  onChange?: (rating: number | null) => void;
   disabled?: boolean;
+  size?: "sm" | "md";
 }
 
-function StarIcon({ filled }: { filled: boolean }) {
+function StarIcon({ filled, size = "md" }: { filled: boolean; size?: "sm" | "md" }) {
+  const sizeClass = size === "sm" ? "w-4 h-4" : "w-6 h-6";
   return (
     <svg
       role="img"
-      className={`w-6 h-6 ${filled ? "text-gold fill-gold" : "text-parchment-dark fill-parchment"}`}
+      className={`${sizeClass} ${filled ? "text-gold fill-gold" : "text-parchment-dark fill-parchment"}`}
       viewBox="0 0 24 24"
       strokeWidth={1.5}
       stroke="currentColor"
@@ -24,7 +26,7 @@ function StarIcon({ filled }: { filled: boolean }) {
   );
 }
 
-export function StarRating({ value, onChange, disabled = false }: StarRatingProps) {
+export function StarRating({ value, onChange, disabled = false, size = "md" }: StarRatingProps) {
   const [hoverValue, setHoverValue] = useState(0);
   const isInteractive = onChange !== undefined && !disabled;
   const displayValue = hoverValue > 0 ? hoverValue : value;
@@ -41,7 +43,7 @@ export function StarRating({ value, onChange, disabled = false }: StarRatingProp
               data-testid={`star-${star}`}
               data-filled={String(star <= value)}
             >
-              <StarIcon filled={star <= value} />
+              <StarIcon filled={star <= value} size={size} />
             </span>
           );
         }
@@ -52,13 +54,13 @@ export function StarRating({ value, onChange, disabled = false }: StarRatingProp
             type="button"
             data-testid={`star-${star}`}
             data-filled={String(filled)}
-            aria-label={`Rate ${star} star${star > 1 ? "s" : ""}`}
+            aria-label={star === value ? "Clear rating" : `Rate ${star} star${star > 1 ? "s" : ""}`}
             className="cursor-pointer transition-transform hover:scale-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-leather rounded"
-            onClick={() => onChange(star)}
+            onClick={() => onChange(star === value ? null : star)}
             onMouseEnter={() => setHoverValue(star)}
             onMouseLeave={() => setHoverValue(0)}
           >
-            <StarIcon filled={filled} />
+            <StarIcon filled={filled} size={size} />
           </button>
         );
       })}

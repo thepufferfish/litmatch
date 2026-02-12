@@ -91,6 +91,30 @@ vi.mock("@/hooks/useGenres", () => ({
   useGenres: () => mockUseGenres(),
 }));
 
+vi.mock("@/hooks/useRatings", () => ({
+  useUserRatingsMap: () => ({ data: undefined, isLoading: false }),
+  useSubmitRating: () => ({
+    mutate: vi.fn(),
+    isPending: false,
+  }),
+  useDeleteRating: () => ({
+    mutate: vi.fn(),
+    isPending: false,
+  }),
+}));
+
+vi.mock("@/context/AuthContext", () => ({
+  useAuth: () => ({
+    user: null,
+    isAuthenticated: false,
+    isLoading: false,
+    login: vi.fn(),
+    register: vi.fn(),
+    logout: vi.fn(),
+    getAccessToken: vi.fn(),
+  }),
+}));
+
 // -- Helpers -----------------------------------------------------------------
 
 function createQueryClient() {

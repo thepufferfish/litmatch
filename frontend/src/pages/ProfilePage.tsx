@@ -4,6 +4,7 @@ import { useAuth } from "@/context/AuthContext";
 import { useUserProfile } from "@/hooks/useUserProfile";
 import { useRecommendations } from "@/hooks/useRecommendations";
 import { useUserRatedBooks, useUserRatings } from "@/hooks/useUserRatedBooks";
+import { useDeleteRating } from "@/hooks/useRatings";
 import { RecommendationGrid } from "@/components/RecommendationGrid";
 import { BookCard } from "@/components/BookCard";
 import { StarRating } from "@/components/StarRating";
@@ -51,6 +52,8 @@ export function ProfilePage() {
       category: "nonfiction",
       enabled: isAuthenticated,
     });
+  const { mutate: deleteRating, isPending: isDeletingRating } =
+    useDeleteRating(user?.id);
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
@@ -122,6 +125,15 @@ export function ProfilePage() {
                       <span className="text-sm text-muted font-medium">
                         {userRating}/5
                       </span>
+                      <button
+                        type="button"
+                        onClick={() => deleteRating(book.id)}
+                        disabled={isDeletingRating}
+                        className="ml-auto text-xs text-muted hover:text-red-600 transition-colors cursor-pointer disabled:opacity-50"
+                        aria-label={`Remove rating for ${book.title}`}
+                      >
+                        Remove
+                      </button>
                     </div>
                   )}
                 </div>
