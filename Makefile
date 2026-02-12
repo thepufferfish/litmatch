@@ -34,7 +34,7 @@ clean:
 # Rebuild Everything
 rebuild:
 	$(COMPOSE) down -v
-	$(COMPOSE) up --build -d
+	$(COMPOSE) up --build --force-recreate -d
 
 create-db:
 	podman run --name db --network=litnet \

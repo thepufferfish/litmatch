@@ -18,6 +18,7 @@ dependencies = [
     "sqlalchemy>=2.0.14,<2.1.0",
     "sqlmodel>=0.0.27",
     "torch>=2.0.0",
+    "dagster-postgres>=0.28.14",
 ]
 
 [tool.uv.sources]

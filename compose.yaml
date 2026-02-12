@@ -8,6 +8,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./init-dagster-db.sh:/docker-entrypoint-initdb.d/init-dagster-db.sh:Z,ro
     ports:
       - "127.0.0.1:5432:5432"
     healthcheck:
@@ -87,10 +88,10 @@ services:
         condition: service_healthy
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      DAGSTER_STORAGE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/dagster
       SCRAPYD_URL: http://scrapyd:6800
       DAGSTER_HOME: /opt/dagster/dagster_home
-    volumes:
-      - dagster_storage:/opt/dagster/dagster_home/storage
+      DAGSTER_GRPC_TIMEOUT_SECONDS: "180"
     healthcheck:
       test: ["CMD", "uv", "run", "dagster", "api", "grpc-health-check", "--port", "4000"]
       interval: 15s
@@ -100,26 +101,27 @@ services:
 
   dagster-webserver:
     image: litmatch-dagster:local
+    entrypoint: ["/usr/local/bin/wait-for-dagster-code.sh"]
     command: ["uv", "run", "dagster-webserver", "-h", "0.0.0.0", "-p", "3000", "-w", "/opt/dagster/dagster_home/workspace.yaml"]
     restart: unless-stopped
     depends_on:
       dagster-code:
         condition: service_healthy
     environment:
+      DAGSTER_STORAGE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/dagster
       DAGSTER_HOME: /opt/dagster/dagster_home
-    volumes:
-      - dagster_storage:/opt/dagster/dagster_home/storage
     ports:
       - "127.0.0.1:3000:3000"
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:3000/server_info')\""]
       interval: 15s
       timeout: 5s
-      retries: 3
-      start_period: 15s
+      retries: 5
+      start_period: 30s
 
   dagster-daemon:
     image: litmatch-dagster:local
+    entrypoint: ["/usr/local/bin/wait-for-dagster-code.sh"]
     command: ["uv", "run", "dagster-daemon", "run"]
     restart: unless-stopped
     depends_on:
@@ -129,10 +131,10 @@ services:
         condition: service_healthy
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      DAGSTER_STORAGE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/dagster
       SCRAPYD_URL: http://scrapyd:6800
       DAGSTER_HOME: /opt/dagster/dagster_home
-    volumes:
-      - dagster_storage:/opt/dagster/dagster_home/storage
+      DAGSTER_SENSOR_GRPC_TIMEOUT_SECONDS: "180"
     healthcheck:
       test: ["CMD", "uv", "run", "dagster-daemon", "liveness-check"]
       interval: 30s
@@ -142,4 +144,3 @@ services:
 
 volumes:
   postgres_data:
-  dagster_storage:

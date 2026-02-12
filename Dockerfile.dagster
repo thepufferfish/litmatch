@@ -24,7 +24,11 @@ RUN uv sync --frozen --no-dev
 COPY dagster_home/dagster.yaml /opt/dagster/dagster_home/dagster.yaml
 COPY workspace.yaml /opt/dagster/dagster_home/workspace.yaml
 
-# Create storage directory (backed by named volume at runtime)
+# Copy entrypoint scripts
+COPY scripts/wait-for-dagster-code.sh /usr/local/bin/wait-for-dagster-code.sh
+RUN chmod +x /usr/local/bin/wait-for-dagster-code.sh
+
+# Create storage directory (used for compute logs)
 RUN mkdir -p /opt/dagster/dagster_home/storage
 
 ENV DAGSTER_HOME=/opt/dagster/dagster_home
