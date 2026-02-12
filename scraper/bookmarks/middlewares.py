@@ -1,56 +1,57 @@
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+from rotating_proxies.middlewares import RotatingProxyMiddleware
 from scrapy import signals
+from scrapy.exceptions import NotConfigured
+
+from bookmarks.proxies import fetch_proxy_list
+
+if TYPE_CHECKING:
+    from scrapy import Request, Spider
+    from scrapy.crawler import Crawler
 
 
 class BookmarksDownloaderMiddleware:
-    # Not all methods need to be defined. If a method is not defined,
-    # scrapy acts as if the downloader middleware does not modify the
-    # passed objects.
+    """Rewrites bookmark URLs to their review-page equivalents."""
 
     @classmethod
-    def from_crawler(cls, crawler):
-        # This method is used by Scrapy to create your spiders.
+    def from_crawler(cls, crawler: Crawler) -> BookmarksDownloaderMiddleware:
         s = cls()
         crawler.signals.connect(s.spider_opened, signal=signals.spider_opened)
         return s
 
-    def process_request(self, request, spider):
-        # Called for each request that goes through the downloader
-        # middleware.
-
-        # Must either:
-        # - return None: continue processing this request
-        # - or return a Response object
-        # - or return a Request object
-        # - or raise IgnoreRequest: process_exception() methods of
-        #   installed downloader middleware will be called
-
+    def process_request(self, request: Request, spider: Spider) -> Request | None:
         url = request.url
-        if url.find('https://bookmarks.reviews/bookmark') != -1:
-            new_url = url.replace('https://bookmarks.reviews/bookmark', 'https://bookmarks.reviews/reviews')
-            spider.logger.debug(f'Redirecting from {url} to {new_url}') 
-            request = request.replace(url=new_url)
-            return request
-        else:
-            return None
+        if "https://bookmarks.reviews/bookmark" in url:
+            new_url = url.replace(
+                "https://bookmarks.reviews/bookmark",
+                "https://bookmarks.reviews/reviews",
+            )
+            spider.logger.debug("Redirecting from %s to %s", url, new_url)
+            return request.replace(url=new_url)
+        return None
 
-    def process_response(self, request, response, spider):
-        # Called with the response returned from the downloader.
+    def spider_opened(self, spider: Spider) -> None:
+        spider.logger.info("Spider opened: %s", spider.name)
 
-        # Must either;
-        # - return a Response object
-        # - return a Request object
-        # - or raise IgnoreRequest
-        return response
 
-    def process_exception(self, request, exception, spider):
-        # Called when a download handler or a process_request()
-        # (from other downloader middleware) raises an exception.
+class WebshareProxyMiddleware(RotatingProxyMiddleware):
+    """RotatingProxyMiddleware that fetches proxies from Webshare at init time.
 
-        # Must either:
-        # - return None: continue processing this exception
-        # - return a Response object: stops process_exception() chain
-        # - return a Request object: stops process_exception() chain
-        pass
+    Proxies are loaded in-memory from the Webshare API when the middleware
+    initialises -- no proxy file is written to disk. If PROXY_TOKEN is unset
+    or the API call fails, the middleware raises NotConfigured so Scrapy
+    disables it and requests go direct.
+    """
 
-    def spider_opened(self, spider):
-        spider.logger.info("Spider opened: %s" % spider.name)
+    @classmethod
+    def from_crawler(cls, crawler: Crawler) -> WebshareProxyMiddleware:
+        proxies = fetch_proxy_list()
+        if not proxies:
+            raise NotConfigured("No proxies available; middleware disabled")
+        # Clear any file path to ensure the in-memory list takes precedence
+        crawler.settings.set("ROTATING_PROXY_LIST_PATH", None, priority="cmdline")
+        crawler.settings.set("ROTATING_PROXY_LIST", proxies, priority="cmdline")
+        return super().from_crawler(crawler)

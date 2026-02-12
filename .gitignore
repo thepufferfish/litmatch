@@ -67,6 +67,7 @@ instance/
 
 # Scrapy stuff:
 .scrapy
+scraper/proxy_list.txt
 
 # Sphinx documentation
 docs/_build/
