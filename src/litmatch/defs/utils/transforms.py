@@ -132,7 +132,7 @@ def transform_book_record(record: dict) -> dict:
     return {
         **record,
         "publish_date": fix_publish_date(record.get("publish_date")),
-        "last_scraped": datetime.strptime(record["last_scraped"], "%Y-%m-%d %H:%M:%S"),
+        "last_scraped": datetime.fromisoformat(record["last_scraped"]),
         "is_fiction": classify_fiction(record.get("genres", [])),
         "reviews": [_transform_review(r) for r in record.get("reviews", [])],
     }

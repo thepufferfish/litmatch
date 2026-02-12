@@ -35,6 +35,11 @@ ENV DAGSTER_HOME=/opt/dagster/dagster_home
 ENV PYTHONPATH=/opt/dagster/app
 
 # Default: run the gRPC code server
+# Increase --heartbeat-ttl so the spawned API server tolerates brief
+# heartbeat gaps under heavy load (crawl + ETL + sensors).  The default
+# 30 s is too tight and causes "No heartbeat received" shutdowns that
+# make the code location temporarily disappear from the daemon workspace.
 CMD ["uv", "run", "dagster", "code-server", "start", \
      "--host", "0.0.0.0", "--port", "4000", \
+     "--heartbeat-ttl", "120", \
      "--module-name", "litmatch.definitions"]

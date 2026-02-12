@@ -7,6 +7,14 @@ storage:
     postgres_url:
       env: DAGSTER_STORAGE_URL
 
+# Use DefaultRunCoordinator so the webserver launches runs directly,
+# bypassing the daemon's queued dequeue loop.  QueuedRunCoordinator
+# causes DagsterCodeLocationNotFoundError when the daemon's gRPC
+# connection to the code server lapses under load.
+run_coordinator:
+  module: dagster._core.run_coordinator.sync_in_memory_run_coordinator
+  class: SyncInMemoryRunCoordinator
+
 sensors:
   use_threads: true
   num_workers: 4

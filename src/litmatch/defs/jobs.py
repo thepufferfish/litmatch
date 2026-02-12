@@ -26,7 +26,6 @@ crawl_job = dg.define_asset_job(
         "crawl_books",
     ),
     description="Trigger Scrapyd crawl.",
-    tags={"dagster/max_runtime": str(5 * 24 * 3600)},
 )
 
 embedding_pipeline = dg.define_asset_job(
