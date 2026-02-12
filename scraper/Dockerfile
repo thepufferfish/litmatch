@@ -20,7 +20,7 @@ RUN apk --no-cache add --virtual build-dependencies \
    gcc \
    musl-dev \
    libffi-dev \
-   libressl-dev \
+   openssl-dev \
    libxml2-dev \
    libxslt-dev \
    postgresql-dev \
@@ -29,7 +29,6 @@ RUN apk --no-cache add --virtual build-dependencies \
  && pip install --no-cache-dir -r requirements.txt \
  && apk del build-dependencies \
  && apk add \
-   libressl \
    libxml2 \
    libxslt \
    libpq
