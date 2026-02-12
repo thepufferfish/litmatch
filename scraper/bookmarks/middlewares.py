@@ -51,7 +51,16 @@ class WebshareProxyMiddleware(RotatingProxyMiddleware):
         proxies = fetch_proxy_list()
         if not proxies:
             raise NotConfigured("No proxies available; middleware disabled")
-        # Clear any file path to ensure the in-memory list takes precedence
-        crawler.settings.set("ROTATING_PROXY_LIST_PATH", None, priority="cmdline")
-        crawler.settings.set("ROTATING_PROXY_LIST", proxies, priority="cmdline")
-        return super().from_crawler(crawler)
+        s = crawler.settings
+        mw = cls(
+            proxy_list=proxies,
+            logstats_interval=s.getfloat("ROTATING_PROXY_LOGSTATS_INTERVAL", 30),
+            stop_if_no_proxies=s.getbool("ROTATING_PROXY_CLOSE_SPIDER", False),
+            max_proxies_to_try=s.getint("ROTATING_PROXY_PAGE_RETRY_TIMES", 5),
+            backoff_base=s.getfloat("ROTATING_PROXY_BACKOFF_BASE", 300),
+            backoff_cap=s.getfloat("ROTATING_PROXY_BACKOFF_CAP", 3600),
+            crawler=crawler,
+        )
+        crawler.signals.connect(mw.engine_started, signal=signals.engine_started)
+        crawler.signals.connect(mw.engine_stopped, signal=signals.engine_stopped)
+        return mw
