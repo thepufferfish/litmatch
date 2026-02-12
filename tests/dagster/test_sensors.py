@@ -53,9 +53,15 @@ def _make_mock_engine(job_id: str | None) -> MagicMock:
 class TestStagingDataSensorLogic:
     """Tests for the sensor evaluation logic."""
 
-    @patch("litmatch.defs.sensors.data_freshness.get_latest_crawl_job_id")
-    def test_first_run_with_data_triggers_pipeline(self, mock_get_latest) -> None:
-        mock_get_latest.return_value = "job-abc-123"
+    @patch("litmatch.defs.sensors.data_freshness.get_staging_data_state")
+    def test_first_run_with_data_triggers_pipeline(self, mock_get_state) -> None:
+        from litmatch.defs.utils.staging import StagingDataState
+
+        mock_get_state.return_value = StagingDataState(
+            crawl_job_id="job-abc-123",
+            max_id=100,
+            row_count=50,
+        )
         db_resource = DatabaseResource(connection_string="postgresql://test:test@localhost/test")
         mock_engine = _make_mock_engine("job-abc-123")
 
@@ -64,32 +70,46 @@ class TestStagingDataSensorLogic:
             result = staging_data_sensor.evaluate_tick(context)
 
         assert len(result.run_requests) == 1
-        assert result.run_requests[0].run_key == "job-abc-123"
-        assert result.cursor == "job-abc-123"
+        # New cursor format includes max_id
+        assert result.cursor == "job-abc-123:100"
 
-    @patch("litmatch.defs.sensors.data_freshness.get_latest_crawl_job_id")
-    def test_unchanged_data_does_not_trigger(self, mock_get_latest) -> None:
-        mock_get_latest.return_value = "job-abc-123"
+    @patch("litmatch.defs.sensors.data_freshness.get_staging_data_state")
+    def test_unchanged_data_does_not_trigger(self, mock_get_state) -> None:
+        from litmatch.defs.utils.staging import StagingDataState
+
+        mock_get_state.return_value = StagingDataState(
+            crawl_job_id="job-abc-123",
+            max_id=100,
+            row_count=50,
+        )
         db_resource = DatabaseResource(connection_string="postgresql://test:test@localhost/test")
         mock_engine = _make_mock_engine("job-abc-123")
 
         with patch.object(DatabaseResource, "get_engine", return_value=mock_engine):
+            # Use new cursor format
             context = dg.build_sensor_context(
-                cursor="job-abc-123",
+                cursor="job-abc-123:100",
                 resources={"database": db_resource},
             )
             result = staging_data_sensor.evaluate_tick(context)
 
         assert len(result.run_requests) == 0
-        assert result.cursor == "job-abc-123"
+        assert result.cursor == "job-abc-123:100"
 
-    @patch("litmatch.defs.sensors.data_freshness.get_latest_crawl_job_id")
-    def test_new_crawl_triggers_pipeline(self, mock_get_latest) -> None:
-        mock_get_latest.return_value = "job-new-456"
+    @patch("litmatch.defs.sensors.data_freshness.get_staging_data_state")
+    def test_new_crawl_triggers_pipeline(self, mock_get_state) -> None:
+        from litmatch.defs.utils.staging import StagingDataState
+
+        mock_get_state.return_value = StagingDataState(
+            crawl_job_id="job-new-456",
+            max_id=75,
+            row_count=30,
+        )
         db_resource = DatabaseResource(connection_string="postgresql://test:test@localhost/test")
         mock_engine = _make_mock_engine("job-new-456")
 
         with patch.object(DatabaseResource, "get_engine", return_value=mock_engine):
+            # Legacy cursor format (backward compatibility test)
             context = dg.build_sensor_context(
                 cursor="job-old-123",
                 resources={"database": db_resource},
@@ -97,12 +117,12 @@ class TestStagingDataSensorLogic:
             result = staging_data_sensor.evaluate_tick(context)
 
         assert len(result.run_requests) == 1
-        assert result.run_requests[0].run_key == "job-new-456"
-        assert result.cursor == "job-new-456"
+        # New cursor format
+        assert result.cursor == "job-new-456:75"
 
-    @patch("litmatch.defs.sensors.data_freshness.get_latest_crawl_job_id")
-    def test_empty_staging_table_skips(self, mock_get_latest) -> None:
-        mock_get_latest.return_value = None
+    @patch("litmatch.defs.sensors.data_freshness.get_staging_data_state")
+    def test_empty_staging_table_skips(self, mock_get_state) -> None:
+        mock_get_state.return_value = None
         db_resource = DatabaseResource(connection_string="postgresql://test:test@localhost/test")
         mock_engine = _make_mock_engine(None)
 
@@ -111,6 +131,7 @@ class TestStagingDataSensorLogic:
             result = staging_data_sensor.evaluate_tick(context)
 
         assert len(result.run_requests) == 0
+        assert result.cursor is None
 
 
 class TestEtlPipelineJob:

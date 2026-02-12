@@ -7,6 +7,8 @@ import os
 import tempfile
 
 import pytest
+from sqlalchemy import create_engine
+from sqlalchemy.engine import Engine
 
 
 @pytest.fixture
@@ -135,3 +137,14 @@ def jsonl_file_with_bad_line(sample_book_record: dict, tmp_path) -> str:
         f.write("this is not valid json\n")
         f.write(json.dumps(sample_book_record) + "\n")
     return str(filepath)
+
+
+@pytest.fixture(scope="function")
+def test_db_engine() -> Engine:
+    """Provide an in-memory SQLite database engine for testing.
+
+    Each test function gets a fresh database instance.
+    """
+    engine = create_engine("sqlite:///:memory:")
+    yield engine
+    engine.dispose()

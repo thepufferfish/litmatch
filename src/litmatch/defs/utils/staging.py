@@ -3,7 +3,23 @@
 Provides functions to query the raw_books_staging table that the
 Scrapy pipeline writes to during crawls.
 """
+from dataclasses import dataclass
+
 from sqlalchemy import Engine, text
+
+
+@dataclass(frozen=True)
+class StagingDataState:
+    """Current state of staging table data.
+
+    Attributes:
+        crawl_job_id: The latest crawl job ID in the staging table.
+        max_id: The maximum row ID for the latest crawl job.
+        row_count: Total number of rows for the latest crawl job.
+    """
+    crawl_job_id: str
+    max_id: int
+    row_count: int
 
 
 def ensure_staging_table(engine: Engine) -> None:
@@ -155,3 +171,76 @@ def cleanup_old_staging_data(engine: Engine, retention_days: int = 30) -> int:
         deleted = result.rowcount
         conn.commit()
         return deleted
+
+
+def get_staging_data_state(engine: Engine) -> StagingDataState | None:
+    """Get current state of staging table data.
+
+    Returns the latest crawl_job_id, the maximum row ID for that job,
+    and the total row count for that job. This enables incremental
+    processing by tracking which rows have been processed.
+
+    Args:
+        engine: SQLAlchemy engine connected to the database.
+
+    Returns:
+        StagingDataState with job_id, max_id, and row_count, or None
+        if the staging table is empty.
+    """
+    with engine.connect() as conn:
+        # Get the latest crawl_job_id and its max ID and count in one query
+        row = conn.execute(
+            text("""
+                SELECT crawl_job_id, MAX(id) as max_id, COUNT(*) as row_count
+                FROM raw_books_staging
+                WHERE crawl_job_id = (
+                    SELECT crawl_job_id
+                    FROM raw_books_staging
+                    ORDER BY created_at DESC
+                    LIMIT 1
+                )
+                GROUP BY crawl_job_id
+            """)
+        ).fetchone()
+
+        if row is None:
+            return None
+
+        return StagingDataState(
+            crawl_job_id=row[0],
+            max_id=row[1],
+            row_count=row[2],
+        )
+
+
+def fetch_staged_items_since_id(
+    engine: Engine,
+    crawl_job_id: str,
+    after_id: int = 0,
+) -> list[dict]:
+    """Fetch staged items with row ID greater than after_id.
+
+    Enables incremental extraction of staging data by fetching only
+    rows that have not been processed yet (id > after_id).
+
+    Args:
+        engine: SQLAlchemy engine connected to the database.
+        crawl_job_id: The crawl job ID to filter by.
+        after_id: Only fetch rows with id > this value. Defaults to 0
+            (fetch all rows for the job).
+
+    Returns:
+        List of dicts (JSONB item_data values) ordered by row ID.
+    """
+    with engine.connect() as conn:
+        result = conn.execute(
+            text("""
+                SELECT item_data
+                FROM raw_books_staging
+                WHERE crawl_job_id = :job_id
+                  AND id > :after_id
+                ORDER BY id
+            """),
+            {"job_id": crawl_job_id, "after_id": after_id},
+        )
+        return [row[0] for row in result]
