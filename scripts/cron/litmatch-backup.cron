@@ -1,0 +1,13 @@
+# LitMatch Database Backup Cron Jobs
+# ===================================
+# Install with: sudo crontab -l | cat - scripts/cron/litmatch-backup.cron | sudo crontab -
+# Or copy to:   sudo cp scripts/cron/litmatch-backup.cron /etc/cron.d/litmatch-backup
+#
+# If using /etc/cron.d/, add the username field after the schedule:
+#   0 2 * * * root /opt/litmatch/scripts/backup-db.sh
+
+# Daily backup at 2:00 AM
+0 2 * * * /opt/litmatch/scripts/backup-db.sh >> /var/log/litmatch-backup.log 2>&1
+
+# Weekly backup verification at 3:00 AM on Sundays
+0 3 * * 0 /opt/litmatch/scripts/backup-db.sh --verify >> /var/log/litmatch-backup.log 2>&1
