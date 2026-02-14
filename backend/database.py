@@ -1,25 +1,36 @@
 import os
+import subprocess
+import sys
 
-from sqlmodel import Session, SQLModel, create_engine, text
-
-from backend.db import models  # noqa: F401 — registers models with SQLModel metadata
+from sqlmodel import Session, create_engine, text
 
 
 def init_db() -> None:
-    """Enable the pgvector extension, then create all tables."""
+    """Run Alembic migrations to initialize/upgrade the database schema."""
     database_url = os.environ.get("DATABASE_URL")
     if not database_url:
         raise RuntimeError("DATABASE_URL environment variable must be set")
 
-    engine = create_engine(database_url, echo=True)
+    # Ensure pgvector extension exists before Alembic runs
+    engine = create_engine(database_url, echo=False)
     try:
-        # pgvector extension must exist before tables with Vector columns.
         with Session(engine) as session:
             session.exec(text("CREATE EXTENSION IF NOT EXISTS vector"))
             session.commit()
-        SQLModel.metadata.create_all(engine)
     finally:
         engine.dispose()
+
+    # Run Alembic upgrade to head
+    result = subprocess.run(
+        [sys.executable, "-m", "alembic", "-c", "backend/alembic.ini", "upgrade", "head"],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        print(f"Alembic migration failed:\n{result.stderr}", file=sys.stderr)
+        sys.exit(1)
+    if result.stdout:
+        print(result.stdout)
 
 
 if __name__ == "__main__":

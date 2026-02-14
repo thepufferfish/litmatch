@@ -86,3 +86,17 @@ test-all:
 
 test-coverage:
 	uv run pytest tests/dagster/ -v --cov=litmatch --cov-report=term-missing -m "not integration"
+
+# Database Migrations
+migrate:
+	uv run alembic -c backend/alembic.ini upgrade head
+
+migrate-generate:
+	@read -p "Migration message: " msg; \
+	uv run alembic -c backend/alembic.ini revision --autogenerate -m "$$msg"
+
+migrate-history:
+	uv run alembic -c backend/alembic.ini history
+
+migrate-downgrade:
+	uv run alembic -c backend/alembic.ini downgrade -1

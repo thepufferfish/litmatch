@@ -1,8 +1,8 @@
 #!/bin/sh
 set -e
 
-echo "Running database initialization..."
+echo "Running database migrations..."
 python -m backend.database
-echo "Database initialization complete."
+echo "Database migrations complete."
 
 exec "$@"
