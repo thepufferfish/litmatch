@@ -86,3 +86,15 @@ test-all:
 
 test-coverage:
 	uv run pytest tests/dagster/ -v --cov=litmatch --cov-report=term-missing -m "not integration"
+
+# Backup & Restore
+backup-db:
+	./scripts/backup-db.sh
+
+backup-verify:
+	./scripts/backup-db.sh --verify
+
+restore-db:
+	@echo "Usage: ./scripts/restore-db.sh <backup-file>"
+	@echo "  --dry-run  Show contents without restoring"
+	@echo "  --force    Skip confirmation prompt"
