@@ -98,3 +98,17 @@ restore-db:
 	@echo "Usage: ./scripts/restore-db.sh <backup-file>"
 	@echo "  --dry-run  Show contents without restoring"
 	@echo "  --force    Skip confirmation prompt"
+
+# Database Migrations
+migrate:
+	uv run alembic -c backend/alembic.ini upgrade head
+
+migrate-generate:
+	@read -p "Migration message: " msg; \
+	uv run alembic -c backend/alembic.ini revision --autogenerate -m "$$msg"
+
+migrate-history:
+	uv run alembic -c backend/alembic.ini history
+
+migrate-downgrade:
+	uv run alembic -c backend/alembic.ini downgrade -1
