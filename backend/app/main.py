@@ -318,7 +318,6 @@ def read_books(
     page: int = Query(default=1, ge=1),
     limit: int = Query(default=24, ge=1, le=100),
     genre: int | None = None,
-    user_id: int | None = None,
     sort: SortOption | None = Query(default=None),
 ):
     rating_sub = _build_rating_subquery()
@@ -336,9 +335,6 @@ def read_books(
     if genre:
         stmt = stmt.join(Book.genres).where(Genre.id == genre)
         count_stmt = count_stmt.join(Book.genres).where(Genre.id == genre)
-    if user_id:
-        stmt = stmt.join(Book.user_ratings).where(UserRating.user_id == user_id)
-        count_stmt = count_stmt.join(Book.user_ratings).where(UserRating.user_id == user_id)
 
     stmt = _apply_sort(stmt, sort, rating_sub)
 
@@ -472,6 +468,46 @@ def get_user_profile(
         username=current_user.username,
         rating_count=rating_count,
     )
+
+
+@app.get("/users/me/rated-books/", response_model=PaginatedResponse[BookRead])
+@limiter.limit("30/minute")
+def get_user_rated_books(
+    request: Request,
+    *,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+    page: int = Query(default=1, ge=1),
+    limit: int = Query(default=24, ge=1, le=100),
+    sort: SortOption | None = Query(default=None),
+):
+    """Return books rated by the authenticated user with pagination and sorting."""
+    rating_sub = _build_rating_subquery()
+
+    stmt = (
+        select(Book)
+        .options(
+            selectinload(Book.author),
+            selectinload(Book.publisher),
+            selectinload(Book.genres),
+        )
+        .join(Book.user_ratings)
+        .where(UserRating.user_id == current_user.id)
+        .outerjoin(rating_sub, Book.id == rating_sub.c.book_id)
+    )
+    count_stmt = (
+        select(func.count(Book.id))
+        .join(Book.user_ratings)
+        .where(UserRating.user_id == current_user.id)
+    )
+
+    stmt = _apply_sort(stmt, sort, rating_sub)
+
+    total = session.exec(count_stmt).one()
+    offset = (page - 1) * limit
+    books = session.exec(stmt.offset(offset).limit(limit)).all()
+    items = _annotate_books_with_ratings(session, list(books))
+    return PaginatedResponse(items=items, total=total, page=page, limit=limit)
 
 
 # ---------------------------------------------------------------------------

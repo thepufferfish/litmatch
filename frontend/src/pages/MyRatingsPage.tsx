@@ -39,7 +39,7 @@ export function MyRatingsPage() {
       : undefined;
 
   const { data: booksData, isLoading: booksLoading } =
-    useUserRatedBooksPaginated(user?.id, { page, limit: PAGE_LIMIT, sort });
+    useUserRatedBooksPaginated({ page, limit: PAGE_LIMIT, sort });
 
   const { data: userRatings } = useUserRatingsMap(user?.id);
   const { mutate: submitRating } = useSubmitRating(user?.id);

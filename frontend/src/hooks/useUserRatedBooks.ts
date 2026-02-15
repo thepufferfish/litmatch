@@ -8,44 +8,46 @@ interface UseUserRatedBooksPaginatedOptions {
   sort?: BookSortOption;
 }
 
-export function useUserRatedBooks(userId: number | undefined) {
+export function useUserRatedBooks() {
   return useQuery<PaginatedResponse<Book>>({
-    queryKey: ["userRatedBooks", userId],
+    queryKey: ["userRatedBooks"],
     queryFn: async () => {
-      const { data } = await api.get<PaginatedResponse<Book>>("/books/", {
-        params: { user_id: userId, limit: 100 },
-      });
+      const { data } = await api.get<PaginatedResponse<Book>>(
+        "/users/me/rated-books/",
+        {
+          params: { limit: 100 },
+        }
+      );
       return data;
     },
     staleTime: 5 * 60 * 1000,
-    enabled: !!userId,
   });
 }
 
 export function useUserRatedBooksPaginated(
-  userId: number | undefined,
   options: UseUserRatedBooksPaginatedOptions = {}
 ) {
   const { page = 1, limit = 12, sort } = options;
 
   return useQuery<PaginatedResponse<Book>>({
-    queryKey: ["userRatedBooksPaginated", userId, { page, limit, sort }],
+    queryKey: ["userRatedBooksPaginated", { page, limit, sort }],
     queryFn: async () => {
       const params: Record<string, string | number> = {
-        user_id: userId!,
         page,
         limit,
       };
       if (sort) {
         params.sort = sort;
       }
-      const { data } = await api.get<PaginatedResponse<Book>>("/books/", {
-        params,
-      });
+      const { data } = await api.get<PaginatedResponse<Book>>(
+        "/users/me/rated-books/",
+        {
+          params,
+        }
+      );
       return data;
     },
     staleTime: 5 * 60 * 1000,
-    enabled: !!userId,
   });
 }
 

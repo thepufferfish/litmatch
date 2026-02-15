@@ -75,28 +75,32 @@ describe("useUserRatedBooks", () => {
     vi.clearAllMocks();
   });
 
-  it("fetches books with user_id param", async () => {
+  it("fetches from /users/me/rated-books/ endpoint", async () => {
     mockGet.mockResolvedValue({ data: mockBooksResponse });
 
-    const { result } = renderHook(() => useUserRatedBooks(10), {
+    const { result } = renderHook(() => useUserRatedBooks(), {
       wrapper: createWrapper(),
     });
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
     expect(result.current.data).toEqual(mockBooksResponse);
-    expect(mockGet).toHaveBeenCalledWith("/books/", {
-      params: { user_id: 10, limit: 100 },
+    expect(mockGet).toHaveBeenCalledWith("/users/me/rated-books/", {
+      params: { limit: 100 },
     });
   });
 
-  it("is disabled when userId is undefined", () => {
-    const { result } = renderHook(() => useUserRatedBooks(undefined), {
+  it("does not send user_id as a query parameter", async () => {
+    mockGet.mockResolvedValue({ data: mockBooksResponse });
+
+    const { result } = renderHook(() => useUserRatedBooks(), {
       wrapper: createWrapper(),
     });
 
-    expect(result.current.fetchStatus).toBe("idle");
-    expect(mockGet).not.toHaveBeenCalled();
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    const callArgs = mockGet.mock.calls[0]!;
+    expect(callArgs[1].params).not.toHaveProperty("user_id");
   });
 });
 
@@ -137,7 +141,7 @@ describe("useUserRatedBooksPaginated", () => {
     vi.clearAllMocks();
   });
 
-  it("fetches books with user_id, page, limit, and sort params", async () => {
+  it("fetches from /users/me/rated-books/ with page, limit, and sort params", async () => {
     const paginatedResponse: PaginatedResponse<Book> = {
       items: [mockBook],
       total: 25,
@@ -148,7 +152,7 @@ describe("useUserRatedBooksPaginated", () => {
 
     const { result } = renderHook(
       () =>
-        useUserRatedBooksPaginated(10, {
+        useUserRatedBooksPaginated({
           page: 2,
           limit: 12,
           sort: "title_asc",
@@ -159,23 +163,37 @@ describe("useUserRatedBooksPaginated", () => {
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
     expect(result.current.data).toEqual(paginatedResponse);
-    expect(mockGet).toHaveBeenCalledWith("/books/", {
-      params: { user_id: 10, page: 2, limit: 12, sort: "title_asc" },
+    expect(mockGet).toHaveBeenCalledWith("/users/me/rated-books/", {
+      params: { page: 2, limit: 12, sort: "title_asc" },
     });
+  });
+
+  it("does not send user_id as a query parameter", async () => {
+    mockGet.mockResolvedValue({ data: mockBooksResponse });
+
+    const { result } = renderHook(
+      () => useUserRatedBooksPaginated(),
+      { wrapper: createWrapper() }
+    );
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    const callArgs = mockGet.mock.calls[0]!;
+    expect(callArgs[1].params).not.toHaveProperty("user_id");
   });
 
   it("uses default page=1, limit=12 when not specified", async () => {
     mockGet.mockResolvedValue({ data: mockBooksResponse });
 
     const { result } = renderHook(
-      () => useUserRatedBooksPaginated(10),
+      () => useUserRatedBooksPaginated(),
       { wrapper: createWrapper() }
     );
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
-    expect(mockGet).toHaveBeenCalledWith("/books/", {
-      params: { user_id: 10, page: 1, limit: 12 },
+    expect(mockGet).toHaveBeenCalledWith("/users/me/rated-books/", {
+      params: { page: 1, limit: 12 },
     });
   });
 
@@ -183,25 +201,15 @@ describe("useUserRatedBooksPaginated", () => {
     mockGet.mockResolvedValue({ data: mockBooksResponse });
 
     const { result } = renderHook(
-      () => useUserRatedBooksPaginated(10, { page: 1, limit: 12 }),
+      () => useUserRatedBooksPaginated({ page: 1, limit: 12 }),
       { wrapper: createWrapper() }
     );
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
-    expect(mockGet).toHaveBeenCalledWith("/books/", {
-      params: { user_id: 10, page: 1, limit: 12 },
+    expect(mockGet).toHaveBeenCalledWith("/users/me/rated-books/", {
+      params: { page: 1, limit: 12 },
     });
-  });
-
-  it("is disabled when userId is undefined", () => {
-    const { result } = renderHook(
-      () => useUserRatedBooksPaginated(undefined),
-      { wrapper: createWrapper() }
-    );
-
-    expect(result.current.fetchStatus).toBe("idle");
-    expect(mockGet).not.toHaveBeenCalled();
   });
 
   it("uses a separate query key from useUserRatedBooks", async () => {
@@ -210,12 +218,12 @@ describe("useUserRatedBooksPaginated", () => {
     const wrapper = createWrapper();
 
     const { result: paginatedResult } = renderHook(
-      () => useUserRatedBooksPaginated(10, { page: 1, limit: 12 }),
+      () => useUserRatedBooksPaginated({ page: 1, limit: 12 }),
       { wrapper }
     );
 
     const { result: unpaginatedResult } = renderHook(
-      () => useUserRatedBooks(10),
+      () => useUserRatedBooks(),
       { wrapper }
     );
 
@@ -233,7 +241,7 @@ describe("useUserRatedBooksPaginated", () => {
 
     const { result: ascResult } = renderHook(
       () =>
-        useUserRatedBooksPaginated(10, {
+        useUserRatedBooksPaginated({
           page: 1,
           limit: 12,
           sort: "title_asc" as BookSortOption,
@@ -243,7 +251,7 @@ describe("useUserRatedBooksPaginated", () => {
 
     const { result: descResult } = renderHook(
       () =>
-        useUserRatedBooksPaginated(10, {
+        useUserRatedBooksPaginated({
           page: 1,
           limit: 12,
           sort: "title_desc" as BookSortOption,

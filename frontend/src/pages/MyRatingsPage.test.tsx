@@ -372,7 +372,6 @@ describe("MyRatingsPage", () => {
     renderMyRatingsPage("/ratings?page=3");
 
     expect(mockUseUserRatedBooksPaginated).toHaveBeenCalledWith(
-      10,
       expect.objectContaining({ page: 3 })
     );
   });
@@ -383,7 +382,6 @@ describe("MyRatingsPage", () => {
     renderMyRatingsPage("/ratings?sort=title_asc");
 
     expect(mockUseUserRatedBooksPaginated).toHaveBeenCalledWith(
-      10,
       expect.objectContaining({ sort: "title_asc" })
     );
   });
@@ -412,7 +410,7 @@ describe("MyRatingsPage", () => {
       mockUseUserRatedBooksPaginated.mock.calls[
         mockUseUserRatedBooksPaginated.mock.calls.length - 1
       ]!;
-    expect(lastCall[1]).toMatchObject({ page: 1 });
+    expect(lastCall[0]).toMatchObject({ page: 1 });
   });
 
   // -- Page change -----------------------------------------------------------
@@ -439,7 +437,7 @@ describe("MyRatingsPage", () => {
       mockUseUserRatedBooksPaginated.mock.calls[
         mockUseUserRatedBooksPaginated.mock.calls.length - 1
       ]!;
-    expect(lastCall[1]).toMatchObject({ page: 2 });
+    expect(lastCall[0]).toMatchObject({ page: 2 });
   });
 
   it("preserves sort when changing pages", async () => {
@@ -463,7 +461,7 @@ describe("MyRatingsPage", () => {
       mockUseUserRatedBooksPaginated.mock.calls[
         mockUseUserRatedBooksPaginated.mock.calls.length - 1
       ]!;
-    expect(lastCall[1]).toMatchObject({ sort: "title_asc" });
+    expect(lastCall[0]).toMatchObject({ sort: "title_asc" });
   });
 
   // -- Redirect out-of-range page --------------------------------------------
@@ -485,7 +483,7 @@ describe("MyRatingsPage", () => {
       mockUseUserRatedBooksPaginated.mock.calls[
         mockUseUserRatedBooksPaginated.mock.calls.length - 1
       ]!;
-    expect(lastCall[1]).toMatchObject({ page: 1 });
+    expect(lastCall[0]).toMatchObject({ page: 1 });
   });
 
   // -- Delete rating ---------------------------------------------------------
@@ -507,7 +505,6 @@ describe("MyRatingsPage", () => {
     renderMyRatingsPage("/ratings?sort=invalid_sort");
 
     expect(mockUseUserRatedBooksPaginated).toHaveBeenCalledWith(
-      10,
       expect.objectContaining({ sort: undefined })
     );
   });
