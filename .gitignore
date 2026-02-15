@@ -182,3 +182,6 @@ frontend/coverage/
 
 # data directory does not need to be tracked
 data/
+
+# Database backups
+backups/

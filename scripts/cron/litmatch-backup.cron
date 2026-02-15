@@ -7,7 +7,8 @@
 #   0 2 * * * root /opt/litmatch/scripts/backup-db.sh
 
 # Daily backup at 2:00 AM
-0 2 * * * /opt/litmatch/scripts/backup-db.sh >> /var/log/litmatch-backup.log 2>&1
+# Source .env so BACKUP_DIR, LOG_FILE, and BACKUP_RETENTION_DAYS are honoured.
+0 2 * * * . /opt/litmatch/.env && /opt/litmatch/scripts/backup-db.sh
 
 # Weekly backup verification at 3:00 AM on Sundays
-0 3 * * 0 /opt/litmatch/scripts/backup-db.sh --verify >> /var/log/litmatch-backup.log 2>&1
+0 3 * * 0 . /opt/litmatch/.env && /opt/litmatch/scripts/backup-db.sh --verify
