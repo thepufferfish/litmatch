@@ -2,16 +2,13 @@ import { render, screen } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ProfilePage } from "./ProfilePage";
-import type { Book, PaginatedResponse, RecommendationResponse, UserProfile, UserRating } from "@/types";
+import type { Book, RecommendationResponse, UserProfile } from "@/types";
 
 // -- Mocks -------------------------------------------------------------------
 
 const mockUseAuth = vi.fn();
 const mockUseUserProfile = vi.fn();
 const mockUseRecommendations = vi.fn();
-const mockUseUserRatedBooks = vi.fn();
-const mockUseUserRatings = vi.fn();
-const mockDeleteRating = vi.fn();
 
 vi.mock("@/context/AuthContext", () => ({
   useAuth: () => mockUseAuth(),
@@ -23,18 +20,6 @@ vi.mock("@/hooks/useUserProfile", () => ({
 
 vi.mock("@/hooks/useRecommendations", () => ({
   useRecommendations: (...args: unknown[]) => mockUseRecommendations(...args),
-}));
-
-vi.mock("@/hooks/useUserRatedBooks", () => ({
-  useUserRatedBooks: (...args: unknown[]) => mockUseUserRatedBooks(...args),
-  useUserRatings: (...args: unknown[]) => mockUseUserRatings(...args),
-}));
-
-vi.mock("@/hooks/useRatings", () => ({
-  useDeleteRating: (_userId?: number) => ({
-    mutate: mockDeleteRating,
-    isPending: false,
-  }),
 }));
 
 // -- Test data ---------------------------------------------------------------
@@ -61,22 +46,6 @@ const mockBook: Book = {
   review_count: 5,
 };
 
-const mockRating: UserRating = {
-  id: 1,
-  user_id: 10,
-  book_id: 1,
-  rating: 4,
-  created_at: "2024-01-01T00:00:00Z",
-  updated_at: "2024-01-01T00:00:00Z",
-};
-
-const mockBooksResponse: PaginatedResponse<Book> = {
-  items: [mockBook],
-  total: 1,
-  page: 1,
-  limit: 100,
-};
-
 const mockFictionRecommendations: RecommendationResponse = {
   items: [{ ...mockBook, id: 2, title: "Recommended Fiction" }],
   meta: { strategy: "personalized", rating_count: 8, category: "fiction" },
@@ -101,6 +70,7 @@ function renderProfilePage() {
           <Route path="/profile" element={<ProfilePage />} />
           <Route path="/login" element={<div>Login Page</div>} />
           <Route path="/" element={<div>Home Page</div>} />
+          <Route path="/ratings" element={<div>My Ratings Page</div>} />
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>
@@ -109,15 +79,11 @@ function renderProfilePage() {
 
 function setupAuthenticatedMocks(overrides?: {
   ratingCount?: number;
-  ratedBooks?: PaginatedResponse<Book>;
-  ratings?: UserRating[];
   fictionRecs?: RecommendationResponse;
   nonfictionRecs?: RecommendationResponse;
 }) {
   const {
     ratingCount = 8,
-    ratedBooks = mockBooksResponse,
-    ratings = [mockRating],
     fictionRecs = mockFictionRecommendations,
     nonfictionRecs = mockNonfictionRecommendations,
   } = overrides ?? {};
@@ -137,21 +103,15 @@ function setupAuthenticatedMocks(overrides?: {
     isLoading: false,
   });
 
-  mockUseUserRatedBooks.mockReturnValue({
-    data: ratedBooks,
-    isLoading: false,
-  });
-
-  mockUseUserRatings.mockReturnValue({
-    data: ratings,
-    isLoading: false,
-  });
-
-  mockUseRecommendations.mockImplementation(({ category }: { category: string }) => {
-    if (category === "fiction") return { data: fictionRecs, isLoading: false };
-    if (category === "nonfiction") return { data: nonfictionRecs, isLoading: false };
-    return { data: undefined, isLoading: false };
-  });
+  mockUseRecommendations.mockImplementation(
+    ({ category }: { category: string }) => {
+      if (category === "fiction")
+        return { data: fictionRecs, isLoading: false };
+      if (category === "nonfiction")
+        return { data: nonfictionRecs, isLoading: false };
+      return { data: undefined, isLoading: false };
+    }
+  );
 }
 
 // -- Tests -------------------------------------------------------------------
@@ -172,9 +132,10 @@ describe("ProfilePage", () => {
       getAccessToken: vi.fn(),
     });
     mockUseUserProfile.mockReturnValue({ data: undefined, isLoading: false });
-    mockUseUserRatedBooks.mockReturnValue({ data: undefined, isLoading: false });
-    mockUseUserRatings.mockReturnValue({ data: undefined, isLoading: false });
-    mockUseRecommendations.mockReturnValue({ data: undefined, isLoading: false });
+    mockUseRecommendations.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+    });
 
     renderProfilePage();
 
@@ -192,68 +153,15 @@ describe("ProfilePage", () => {
       getAccessToken: vi.fn(),
     });
     mockUseUserProfile.mockReturnValue({ data: undefined, isLoading: false });
-    mockUseUserRatedBooks.mockReturnValue({ data: undefined, isLoading: false });
-    mockUseUserRatings.mockReturnValue({ data: undefined, isLoading: false });
-    mockUseRecommendations.mockReturnValue({ data: undefined, isLoading: false });
+    mockUseRecommendations.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+    });
 
     const { container } = renderProfilePage();
 
     const skeletons = container.querySelectorAll(".skeleton-shimmer");
     expect(skeletons.length).toBeGreaterThan(0);
-  });
-
-  it("shows 'no ratings' empty state when user has 0 ratings", () => {
-    setupAuthenticatedMocks({
-      ratingCount: 0,
-      ratedBooks: { items: [], total: 0, page: 1, limit: 100 },
-      ratings: [],
-    });
-
-    renderProfilePage();
-
-    expect(
-      screen.getByText(/haven't rated any books yet/i)
-    ).toBeInTheDocument();
-  });
-
-  it("shows 'rate more books' message when user has 1-4 ratings", () => {
-    setupAuthenticatedMocks({ ratingCount: 2 });
-
-    renderProfilePage();
-
-    expect(
-      screen.getByText(/rate 3 more books/i)
-    ).toBeInTheDocument();
-  });
-
-  it("shows rated books grid with star ratings", () => {
-    setupAuthenticatedMocks();
-
-    renderProfilePage();
-
-    expect(screen.getByText("My Rated Books")).toBeInTheDocument();
-    expect(screen.getByText("Test Book")).toBeInTheDocument();
-  });
-
-  it("shows recommendation tabs when user has 5+ ratings", () => {
-    setupAuthenticatedMocks();
-
-    renderProfilePage();
-
-    expect(screen.getByText("Recommended for You")).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: /^fiction$/i })).toBeInTheDocument();
-    expect(
-      screen.getByRole("tab", { name: /^non-fiction$/i })
-    ).toBeInTheDocument();
-  });
-
-  it("shows the user rating overlaid on book cards", () => {
-    setupAuthenticatedMocks();
-
-    renderProfilePage();
-
-    // The star rating display should show "4/5" for the rated book
-    expect(screen.getByText("4/5")).toBeInTheDocument();
   });
 
   it("shows loading state while profile data is being fetched", () => {
@@ -268,8 +176,6 @@ describe("ProfilePage", () => {
     });
 
     mockUseUserProfile.mockReturnValue({ data: undefined, isLoading: true });
-    mockUseUserRatedBooks.mockReturnValue({ data: undefined, isLoading: true });
-    mockUseUserRatings.mockReturnValue({ data: undefined, isLoading: true });
     mockUseRecommendations
       .mockReturnValueOnce({ data: undefined, isLoading: true })
       .mockReturnValueOnce({ data: undefined, isLoading: true });
@@ -280,28 +186,76 @@ describe("ProfilePage", () => {
     expect(skeletons.length).toBeGreaterThan(0);
   });
 
-  it("shows Remove button next to rated books", () => {
+  it("shows page title 'Recommended for You'", () => {
     setupAuthenticatedMocks();
 
     renderProfilePage();
 
-    const removeBtn = screen.getByRole("button", {
-      name: /remove rating for test book/i,
-    });
-    expect(removeBtn).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { level: 1 })
+    ).toHaveTextContent("Recommended for You");
   });
 
-  it("calls deleteRating when Remove button is clicked", async () => {
-    const user = (await import("@testing-library/user-event")).default.setup();
+  it("does not show 'My Rated Books' section", () => {
     setupAuthenticatedMocks();
 
     renderProfilePage();
 
-    const removeBtn = screen.getByRole("button", {
-      name: /remove rating for test book/i,
-    });
-    await user.click(removeBtn);
+    expect(screen.queryByText("My Rated Books")).not.toBeInTheDocument();
+  });
 
-    expect(mockDeleteRating).toHaveBeenCalledWith(1);
+  it("shows a link to the My Ratings page", () => {
+    setupAuthenticatedMocks();
+
+    renderProfilePage();
+
+    const ratingsLink = screen.getByRole("link", { name: /my ratings/i });
+    expect(ratingsLink).toBeInTheDocument();
+    expect(ratingsLink).toHaveAttribute("href", "/ratings");
+  });
+
+  it("shows 'rate more books' message when user has 1-4 ratings", () => {
+    setupAuthenticatedMocks({ ratingCount: 2 });
+
+    renderProfilePage();
+
+    expect(screen.getByText(/rate 3 more books/i)).toBeInTheDocument();
+  });
+
+  it("shows recommendation tabs when user has 5+ ratings", () => {
+    setupAuthenticatedMocks();
+
+    renderProfilePage();
+
+    expect(
+      screen.getByRole("tab", { name: /^fiction$/i })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("tab", { name: /^non-fiction$/i })
+    ).toBeInTheDocument();
+  });
+
+  it("shows prompt to rate books when user has 0 ratings", () => {
+    setupAuthenticatedMocks({ ratingCount: 0 });
+
+    renderProfilePage();
+
+    expect(screen.getByText(/rate 5 more books/i)).toBeInTheDocument();
+  });
+
+  it("shows rating count in subtitle", () => {
+    setupAuthenticatedMocks({ ratingCount: 8 });
+
+    renderProfilePage();
+
+    expect(screen.getByText(/8 books rated/i)).toBeInTheDocument();
+  });
+
+  it("shows singular text for 1 book rated", () => {
+    setupAuthenticatedMocks({ ratingCount: 1 });
+
+    renderProfilePage();
+
+    expect(screen.getByText(/1 book rated/i)).toBeInTheDocument();
   });
 });
