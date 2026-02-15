@@ -39,7 +39,7 @@ def _parse_cursor(cursor: str | None) -> tuple[str | None, int]:
 @dg.sensor(
     name="staging_data_sensor",
     job=etl_pipeline,
-    minimum_interval_seconds=60,
+    minimum_interval_seconds=3600,
     description="Watches the staging table for new crawl data and triggers ETL.",
     default_status=dg.DefaultSensorStatus.RUNNING,
 )
