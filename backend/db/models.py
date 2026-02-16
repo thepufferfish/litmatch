@@ -263,6 +263,15 @@ class RecommendationResponse(BaseModel):
     meta: RecommendationMeta
 
 
+class PaginatedRecommendationResponse(BaseModel):
+    items: list[BookRead]
+    meta: RecommendationMeta
+    total: int
+    offset: int
+    limit: int
+    has_more: bool
+
+
 class GenreSimple(BaseModel):
     """Simple genre representation for grouped genres response."""
     id: int

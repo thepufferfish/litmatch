@@ -95,7 +95,8 @@ def get_popular_books(
     category: CategoryFilter = "all",
     limit: int = 20,
     genre_id: int | None = None,
-) -> list[Book]:
+    offset: int = 0,
+) -> tuple[list[Book], int]:
     """Return top-rated books by average critic (Review) rating.
 
     Falls back strategy for users with fewer than MIN_RATINGS ratings.
@@ -107,41 +108,49 @@ def get_popular_books(
         category: Filter by "fiction", "nonfiction", or "all".
         limit: Maximum number of results.
         genre_id: Optional genre ID to filter results.
+        offset: Number of results to skip.
 
     Returns:
-        List of Book objects ordered by average critic rating descending.
+        Tuple of (list of Book objects ordered by average critic rating
+        descending, total count of matching books).
     """
     rating_sub = build_rating_subquery()
 
-    stmt = (
-        select(Book)
-        .options(
+    base_stmt = select(Book).join(rating_sub, Book.id == rating_sub.c.book_id)
+
+    if exclude_book_ids:
+        base_stmt = base_stmt.where(Book.id.notin_(exclude_book_ids))
+
+    if category == "fiction":
+        base_stmt = base_stmt.where(Book.is_fiction == True)  # noqa: E712
+    elif category == "nonfiction":
+        base_stmt = base_stmt.where(Book.is_fiction == False)  # noqa: E712
+
+    if genre_id is not None:
+        base_stmt = base_stmt.join(
+            BookGenreLink, Book.id == BookGenreLink.book_id
+        ).where(BookGenreLink.genre_id == genre_id)
+
+    # Count total matching books
+    count_stmt = select(func.count()).select_from(base_stmt.subquery())
+    total = session.exec(count_stmt).one()
+
+    # Fetch paginated results
+    fetch_stmt = (
+        base_stmt.options(
             selectinload(Book.author),
             selectinload(Book.publisher),
             selectinload(Book.genres),
         )
-        .join(rating_sub, Book.id == rating_sub.c.book_id)
+        .order_by(
+            rating_sub.c.avg_rating.desc().nulls_last(),
+            rating_sub.c.review_count.desc(),
+        )
+        .offset(offset)
+        .limit(limit)
     )
 
-    if exclude_book_ids:
-        stmt = stmt.where(Book.id.notin_(exclude_book_ids))
-
-    if category == "fiction":
-        stmt = stmt.where(Book.is_fiction == True)  # noqa: E712
-    elif category == "nonfiction":
-        stmt = stmt.where(Book.is_fiction == False)  # noqa: E712
-
-    if genre_id is not None:
-        stmt = stmt.join(BookGenreLink, Book.id == BookGenreLink.book_id).where(
-            BookGenreLink.genre_id == genre_id
-        )
-
-    stmt = stmt.order_by(
-        rating_sub.c.avg_rating.desc().nulls_last(),
-        rating_sub.c.review_count.desc(),
-    ).limit(limit)
-
-    return list(session.exec(stmt).all())
+    return list(session.exec(fetch_stmt).all()), total
 
 
 def find_nearest_books(
@@ -151,7 +160,8 @@ def find_nearest_books(
     category: CategoryFilter = "all",
     limit: int = 20,
     genre_id: int | None = None,
-) -> list[Book]:
+    offset: int = 0,
+) -> tuple[list[Book], int]:
     """Find nearest books by cosine distance using pgvector.
 
     Uses pgvector's cosine_distance operator on Book.embedding.
@@ -164,35 +174,41 @@ def find_nearest_books(
         category: Filter by "fiction", "nonfiction", or "all".
         limit: Maximum number of results.
         genre_id: Optional genre ID to filter results.
+        offset: Number of results to skip.
 
     Returns:
-        List of Book objects ordered by cosine similarity.
+        Tuple of (list of Book objects ordered by cosine similarity,
+        total count of matching books).
     """
-    stmt = (
-        select(Book)
-        .options(
+    base_stmt = select(Book).where(Book.embedding.isnot(None))
+
+    if exclude_book_ids:
+        base_stmt = base_stmt.where(Book.id.notin_(exclude_book_ids))
+
+    if category == "fiction":
+        base_stmt = base_stmt.where(Book.is_fiction == True)  # noqa: E712
+    elif category == "nonfiction":
+        base_stmt = base_stmt.where(Book.is_fiction == False)  # noqa: E712
+
+    if genre_id is not None:
+        base_stmt = base_stmt.join(
+            BookGenreLink, Book.id == BookGenreLink.book_id
+        ).where(BookGenreLink.genre_id == genre_id)
+
+    # Count total matching books
+    count_stmt = select(func.count()).select_from(base_stmt.subquery())
+    total = session.exec(count_stmt).one()
+
+    # Fetch paginated results
+    fetch_stmt = (
+        base_stmt.options(
             selectinload(Book.author),
             selectinload(Book.publisher),
             selectinload(Book.genres),
         )
-        .where(Book.embedding.isnot(None))
+        .order_by(Book.embedding.cosine_distance(user_embedding))
+        .offset(offset)
+        .limit(limit)
     )
 
-    if exclude_book_ids:
-        stmt = stmt.where(Book.id.notin_(exclude_book_ids))
-
-    if category == "fiction":
-        stmt = stmt.where(Book.is_fiction == True)  # noqa: E712
-    elif category == "nonfiction":
-        stmt = stmt.where(Book.is_fiction == False)  # noqa: E712
-
-    if genre_id is not None:
-        stmt = stmt.join(BookGenreLink, Book.id == BookGenreLink.book_id).where(
-            BookGenreLink.genre_id == genre_id
-        )
-
-    stmt = stmt.order_by(
-        Book.embedding.cosine_distance(user_embedding)
-    ).limit(limit)
-
-    return list(session.exec(stmt).all())
+    return list(session.exec(fetch_stmt).all()), total
