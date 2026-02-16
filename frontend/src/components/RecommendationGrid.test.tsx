@@ -3,13 +3,13 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { RecommendationGrid } from "./RecommendationGrid";
-import type { RecommendationResponse, GroupedGenres } from "@/types";
+import type { PaginatedRecommendationResponse, GroupedGenres } from "@/types";
 import * as useGroupedGenresHook from "@/hooks/useGroupedGenres";
-import * as useRecommendationsHook from "@/hooks/useRecommendations";
+import * as useInfiniteRecommendationsHook from "@/hooks/useInfiniteRecommendations";
 
 // -- Test data ---------------------------------------------------------------
 
-const fictionBooks: RecommendationResponse = {
+const fictionPage: PaginatedRecommendationResponse = {
   items: [
     {
       id: 1,
@@ -32,9 +32,13 @@ const fictionBooks: RecommendationResponse = {
     rating_count: 8,
     category: "fiction",
   },
+  total: 1,
+  offset: 0,
+  limit: 20,
+  has_more: false,
 };
 
-const nonfictionBooks: RecommendationResponse = {
+const nonfictionPage: PaginatedRecommendationResponse = {
   items: [
     {
       id: 2,
@@ -57,15 +61,29 @@ const nonfictionBooks: RecommendationResponse = {
     rating_count: 2,
     category: "nonfiction",
   },
+  total: 1,
+  offset: 0,
+  limit: 20,
+  has_more: false,
 };
 
-const emptyResponse: RecommendationResponse = {
+const emptyPage: PaginatedRecommendationResponse = {
   items: [],
   meta: {
     strategy: "popular",
     rating_count: 0,
     category: "fiction",
   },
+  total: 0,
+  offset: 0,
+  limit: 20,
+  has_more: false,
+};
+
+const fictionPageWithMore: PaginatedRecommendationResponse = {
+  ...fictionPage,
+  total: 40,
+  has_more: true,
 };
 
 const mockGroupedGenres: GroupedGenres = {
@@ -76,15 +94,33 @@ const mockGroupedGenres: GroupedGenres = {
 
 // -- Helpers -----------------------------------------------------------------
 
+function makeInfiniteQueryResult(
+  pages: PaginatedRecommendationResponse[],
+  overrides: Record<string, unknown> = {}
+) {
+  return {
+    data: { pages, pageParams: pages.map((_, i) => i * 20) },
+    isLoading: false,
+    isFetchingNextPage: false,
+    hasNextPage: pages.length > 0 && pages[pages.length - 1].has_more,
+    fetchNextPage: vi.fn(),
+    ...overrides,
+  };
+}
+
 function renderGrid(props?: {
-  fiction?: RecommendationResponse;
-  nonfiction?: RecommendationResponse;
+  fictionPages?: PaginatedRecommendationResponse[];
+  nonfictionPages?: PaginatedRecommendationResponse[];
   genresLoading?: boolean;
+  fictionOverrides?: Record<string, unknown>;
+  nonfictionOverrides?: Record<string, unknown>;
 }) {
   const {
-    fiction = fictionBooks,
-    nonfiction = nonfictionBooks,
+    fictionPages = [fictionPage],
+    nonfictionPages = [nonfictionPage],
     genresLoading = false,
+    fictionOverrides = {},
+    nonfictionOverrides = {},
   } = props ?? {};
 
   // Mock the hooks
@@ -93,21 +129,22 @@ function renderGrid(props?: {
     isLoading: genresLoading,
   } as ReturnType<typeof useGroupedGenresHook.useGroupedGenres>);
 
-  vi.spyOn(useRecommendationsHook, "useRecommendations").mockImplementation(
-    (params) => {
-      const category = params?.category ?? "all";
-      if (category === "fiction") {
-        return {
-          data: fiction,
-          isLoading: false,
-        } as ReturnType<typeof useRecommendationsHook.useRecommendations>;
-      }
-      return {
-        data: nonfiction,
-        isLoading: false,
-      } as ReturnType<typeof useRecommendationsHook.useRecommendations>;
+  vi.spyOn(
+    useInfiniteRecommendationsHook,
+    "useInfiniteRecommendations"
+  ).mockImplementation((params) => {
+    const category = params?.category ?? "all";
+    if (category === "fiction") {
+      return makeInfiniteQueryResult(
+        fictionPages,
+        fictionOverrides
+      ) as ReturnType<typeof useInfiniteRecommendationsHook.useInfiniteRecommendations>;
     }
-  );
+    return makeInfiniteQueryResult(
+      nonfictionPages,
+      nonfictionOverrides
+    ) as ReturnType<typeof useInfiniteRecommendationsHook.useInfiniteRecommendations>;
+  });
 
   const queryClient = new QueryClient({
     defaultOptions: {
@@ -185,7 +222,7 @@ describe("RecommendationGrid", () => {
   });
 
   it("shows empty state when active tab has no items", async () => {
-    renderGrid({ fiction: emptyResponse });
+    renderGrid({ fictionPages: [emptyPage] });
 
     await waitFor(() => {
       expect(
@@ -197,10 +234,12 @@ describe("RecommendationGrid", () => {
   it("shows nonfiction empty state", async () => {
     const user = userEvent.setup();
     renderGrid({
-      nonfiction: {
-        ...emptyResponse,
-        meta: { ...emptyResponse.meta, category: "nonfiction" },
-      },
+      nonfictionPages: [
+        {
+          ...emptyPage,
+          meta: { ...emptyPage.meta, category: "nonfiction" },
+        },
+      ],
     });
 
     await waitFor(() => {
@@ -224,6 +263,84 @@ describe("RecommendationGrid", () => {
       expect(
         links.some((link) => link.getAttribute("href") === "/books/1")
       ).toBe(true);
+    });
+  });
+
+  // -- Infinite scroll specific tests --
+
+  it("renders sentinel element when has_more is true", async () => {
+    renderGrid({ fictionPages: [fictionPageWithMore] });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("scroll-sentinel")).toBeInTheDocument();
+    });
+  });
+
+  it("does not render sentinel element when has_more is false", async () => {
+    renderGrid();
+
+    await waitFor(() => {
+      expect(screen.getByText("Fiction Book One")).toBeInTheDocument();
+    });
+
+    expect(screen.queryByTestId("scroll-sentinel")).not.toBeInTheDocument();
+  });
+
+  it("shows end-of-list message when no more pages", async () => {
+    renderGrid();
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/you've seen all recommendations/i)
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("does not show end-of-list message when has_more is true", async () => {
+    renderGrid({ fictionPages: [fictionPageWithMore] });
+
+    await waitFor(() => {
+      expect(screen.getByText("Fiction Book One")).toBeInTheDocument();
+    });
+
+    expect(
+      screen.queryByText(/you've seen all recommendations/i)
+    ).not.toBeInTheDocument();
+  });
+
+  it("flattens items across multiple pages", async () => {
+    const page2: PaginatedRecommendationResponse = {
+      items: [
+        {
+          id: 3,
+          title: "Fiction Book Two",
+          author_id: 3,
+          publisher_id: 3,
+          publish_date: "2024-03-01",
+          description: "Another fiction book.",
+          url: "https://example.com/fiction2",
+          cover: null,
+          author: { id: 3, name: "Another Author" },
+          publisher: { id: 3, name: "Publisher" },
+          genres: [{ id: 1, name: "Fiction" }],
+          avg_critic_rating: 4.5,
+          review_count: 12,
+        },
+      ],
+      meta: fictionPage.meta,
+      total: 2,
+      offset: 20,
+      limit: 20,
+      has_more: false,
+    };
+
+    renderGrid({
+      fictionPages: [fictionPageWithMore, page2],
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Fiction Book One")).toBeInTheDocument();
+      expect(screen.getByText("Fiction Book Two")).toBeInTheDocument();
     });
   });
 });

@@ -2,13 +2,13 @@ import { render, screen } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ProfilePage } from "./ProfilePage";
-import type { Book, RecommendationResponse, UserProfile } from "@/types";
+import type { Book, PaginatedRecommendationResponse, UserProfile } from "@/types";
 
 // -- Mocks -------------------------------------------------------------------
 
 const mockUseAuth = vi.fn();
 const mockUseUserProfile = vi.fn();
-const mockUseRecommendations = vi.fn();
+const mockUseInfiniteRecommendations = vi.fn();
 const mockUseGroupedGenres = vi.fn();
 
 vi.mock("@/context/AuthContext", () => ({
@@ -19,8 +19,9 @@ vi.mock("@/hooks/useUserProfile", () => ({
   useUserProfile: (...args: unknown[]) => mockUseUserProfile(...args),
 }));
 
-vi.mock("@/hooks/useRecommendations", () => ({
-  useRecommendations: (...args: unknown[]) => mockUseRecommendations(...args),
+vi.mock("@/hooks/useInfiniteRecommendations", () => ({
+  useInfiniteRecommendations: (...args: unknown[]) =>
+    mockUseInfiniteRecommendations(...args),
 }));
 
 vi.mock("@/hooks/useGroupedGenres", () => ({
@@ -58,14 +59,22 @@ const mockBook: Book = {
   review_count: 5,
 };
 
-const mockFictionRecommendations: RecommendationResponse = {
+const mockFictionPage: PaginatedRecommendationResponse = {
   items: [{ ...mockBook, id: 2, title: "Recommended Fiction" }],
   meta: { strategy: "personalized", rating_count: 8, category: "fiction" },
+  total: 1,
+  offset: 0,
+  limit: 20,
+  has_more: false,
 };
 
-const mockNonfictionRecommendations: RecommendationResponse = {
+const mockNonfictionPage: PaginatedRecommendationResponse = {
   items: [{ ...mockBook, id: 3, title: "Recommended Nonfiction" }],
   meta: { strategy: "personalized", rating_count: 8, category: "nonfiction" },
+  total: 1,
+  offset: 0,
+  limit: 20,
+  has_more: false,
 };
 
 // -- Helpers -----------------------------------------------------------------
@@ -89,15 +98,25 @@ function renderProfilePage() {
   );
 }
 
+function makeInfiniteResult(page: PaginatedRecommendationResponse) {
+  return {
+    data: { pages: [page], pageParams: [0] },
+    isLoading: false,
+    isFetchingNextPage: false,
+    hasNextPage: page.has_more,
+    fetchNextPage: vi.fn(),
+  };
+}
+
 function setupAuthenticatedMocks(overrides?: {
   ratingCount?: number;
-  fictionRecs?: RecommendationResponse;
-  nonfictionRecs?: RecommendationResponse;
+  fictionPage?: PaginatedRecommendationResponse;
+  nonfictionPage?: PaginatedRecommendationResponse;
 }) {
   const {
     ratingCount = 8,
-    fictionRecs = mockFictionRecommendations,
-    nonfictionRecs = mockNonfictionRecommendations,
+    fictionPage = mockFictionPage,
+    nonfictionPage = mockNonfictionPage,
   } = overrides ?? {};
 
   mockUseAuth.mockReturnValue({
@@ -124,13 +143,17 @@ function setupAuthenticatedMocks(overrides?: {
     isLoading: false,
   });
 
-  mockUseRecommendations.mockImplementation(
+  mockUseInfiniteRecommendations.mockImplementation(
     ({ category }: { category: string }) => {
-      if (category === "fiction")
-        return { data: fictionRecs, isLoading: false };
-      if (category === "nonfiction")
-        return { data: nonfictionRecs, isLoading: false };
-      return { data: undefined, isLoading: false };
+      if (category === "fiction") return makeInfiniteResult(fictionPage);
+      if (category === "nonfiction") return makeInfiniteResult(nonfictionPage);
+      return {
+        data: undefined,
+        isLoading: false,
+        isFetchingNextPage: false,
+        hasNextPage: false,
+        fetchNextPage: vi.fn(),
+      };
     }
   );
 }
@@ -153,9 +176,12 @@ describe("ProfilePage", () => {
       getAccessToken: vi.fn(),
     });
     mockUseUserProfile.mockReturnValue({ data: undefined, isLoading: false });
-    mockUseRecommendations.mockReturnValue({
+    mockUseInfiniteRecommendations.mockReturnValue({
       data: undefined,
       isLoading: false,
+      isFetchingNextPage: false,
+      hasNextPage: false,
+      fetchNextPage: vi.fn(),
     });
 
     renderProfilePage();
@@ -174,9 +200,12 @@ describe("ProfilePage", () => {
       getAccessToken: vi.fn(),
     });
     mockUseUserProfile.mockReturnValue({ data: undefined, isLoading: false });
-    mockUseRecommendations.mockReturnValue({
+    mockUseInfiniteRecommendations.mockReturnValue({
       data: undefined,
       isLoading: false,
+      isFetchingNextPage: false,
+      hasNextPage: false,
+      fetchNextPage: vi.fn(),
     });
 
     const { container } = renderProfilePage();
@@ -197,9 +226,13 @@ describe("ProfilePage", () => {
     });
 
     mockUseUserProfile.mockReturnValue({ data: undefined, isLoading: true });
-    mockUseRecommendations
-      .mockReturnValueOnce({ data: undefined, isLoading: true })
-      .mockReturnValueOnce({ data: undefined, isLoading: true });
+    mockUseInfiniteRecommendations.mockReturnValue({
+      data: undefined,
+      isLoading: true,
+      isFetchingNextPage: false,
+      hasNextPage: false,
+      fetchNextPage: vi.fn(),
+    });
 
     const { container } = renderProfilePage();
 
