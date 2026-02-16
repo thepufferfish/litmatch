@@ -2,6 +2,7 @@ import { useParams, Link, useNavigate } from "react-router";
 import { useBook } from "@/hooks/useBooks";
 import { useReviews } from "@/hooks/useReviews";
 import { useUserRating, useSubmitRating, useDeleteRating } from "@/hooks/useRatings";
+import { useMyListIds, useAddToList, useRemoveFromList } from "@/hooks/useMyList";
 import { useAuth } from "@/context/AuthContext";
 import { CriticRatingBadge } from "@/components/CriticRatingBadge";
 import { ReviewList } from "@/components/ReviewList";
@@ -25,6 +26,10 @@ export function BookDetailPage() {
     useSubmitRating(user?.id);
   const { mutate: deleteRating, isPending: isDeletingRating } =
     useDeleteRating(user?.id);
+  const { data: myListIds } = useMyListIds(user?.id);
+  const isOnList = myListIds?.has(bookId) ?? false;
+  const { mutate: addToList, isPending: isAddingToList } = useAddToList(user?.id);
+  const { mutate: removeFromList, isPending: isRemovingFromList } = useRemoveFromList(user?.id);
 
   if (bookLoading) {
     return (
@@ -225,6 +230,53 @@ export function BookDetailPage() {
                   </>
                 )}
               </div>
+            )}
+          </div>
+
+          {/* My List section */}
+          <div className="mt-6">
+            {!isAuthenticated ? (
+              <p className="text-muted text-sm">
+                <Link
+                  to="/login"
+                  className="text-leather font-medium hover:text-leather-light transition-colors"
+                >
+                  Log in
+                </Link>{" "}
+                to save this book to your reading list.
+              </p>
+            ) : (
+              <button
+                type="button"
+                onClick={() => {
+                  if (isOnList) {
+                    removeFromList(bookId);
+                  } else {
+                    addToList(bookId);
+                  }
+                }}
+                disabled={isAddingToList || isRemovingFromList}
+                className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors cursor-pointer disabled:opacity-50 ${
+                  isOnList
+                    ? "bg-parchment text-ink-light hover:bg-parchment-dark"
+                    : "bg-leather text-white hover:bg-leather-light"
+                }`}
+              >
+                <svg
+                  className="w-4 h-4"
+                  viewBox="0 0 24 24"
+                  strokeWidth={1.5}
+                  stroke="currentColor"
+                  fill={isOnList ? "currentColor" : "none"}
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M17.593 3.322c1.1.128 1.907 1.077 1.907 2.185V21L12 17.25 4.5 21V5.507c0-1.108.806-2.057 1.907-2.185a48.507 48.507 0 0 1 11.186 0Z"
+                  />
+                </svg>
+                {isOnList ? "On My List" : "Add to My List"}
+              </button>
             )}
           </div>
 

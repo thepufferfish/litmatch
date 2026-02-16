@@ -44,6 +44,7 @@ from backend.db.models import (
     Genre,
     GenreSimple,
     GroupedGenresResponse,
+    ListAddRequest,
     PaginatedResponse,
     RatingCreate,
     RecommendationMeta,
@@ -51,6 +52,7 @@ from backend.db.models import (
     Review,
     ReviewRead,
     User,
+    UserBookList,
     UserCreate,
     UserProfile,
     UserPublic,
@@ -537,16 +539,22 @@ def get_user_profile(
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user),
 ):
-    """Return the authenticated user's profile with rating count."""
+    """Return the authenticated user's profile with rating and list counts."""
     rating_count = session.exec(
         select(func.count(UserRating.id)).where(
             UserRating.user_id == current_user.id
+        )
+    ).one()
+    list_count = session.exec(
+        select(func.count(UserBookList.id)).where(
+            UserBookList.user_id == current_user.id
         )
     ).one()
     return UserProfile(
         id=current_user.id,
         username=current_user.username,
         rating_count=rating_count,
+        list_count=list_count,
     )
 
 
@@ -741,4 +749,119 @@ def delete_rating(
     if not rating:
         raise HTTPException(status_code=404, detail="Rating not found")
     session.delete(rating)
+    session.commit()
+
+
+# ---------------------------------------------------------------------------
+# My List
+# ---------------------------------------------------------------------------
+
+@app.get("/list/ids", response_model=list[int])
+@limiter.limit("30/minute")
+def get_list_ids(
+    request: Request,
+    *,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+):
+    """Return all book IDs on the current user's list."""
+    stmt = select(UserBookList.book_id).where(
+        UserBookList.user_id == current_user.id
+    )
+    book_ids = session.exec(stmt).all()
+    return list(book_ids)
+
+
+@app.get("/users/me/list/", response_model=PaginatedResponse[BookRead])
+@limiter.limit("30/minute")
+def get_user_list_books(
+    request: Request,
+    *,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+    page: int = Query(default=1, ge=1),
+    limit: int = Query(default=24, ge=1, le=100),
+    sort: SortOption | None = Query(default=None),
+):
+    """Return books on the authenticated user's list with pagination and sorting."""
+    rating_sub = _build_rating_subquery()
+
+    stmt = (
+        select(Book)
+        .options(
+            selectinload(Book.author),
+            selectinload(Book.publisher),
+            selectinload(Book.genres),
+        )
+        .join(UserBookList, UserBookList.book_id == Book.id)
+        .where(UserBookList.user_id == current_user.id)
+        .outerjoin(rating_sub, Book.id == rating_sub.c.book_id)
+    )
+    count_stmt = (
+        select(func.count(Book.id))
+        .join(UserBookList, UserBookList.book_id == Book.id)
+        .where(UserBookList.user_id == current_user.id)
+    )
+
+    stmt = _apply_sort(stmt, sort, rating_sub)
+
+    total = session.exec(count_stmt).one()
+    offset = (page - 1) * limit
+    books = session.exec(stmt.offset(offset).limit(limit)).all()
+    items = _annotate_books_with_ratings(session, list(books))
+    return PaginatedResponse(items=items, total=total, page=page, limit=limit)
+
+
+@app.post("/list/", status_code=201)
+@limiter.limit("30/minute")
+def add_to_list(
+    request: Request,
+    *,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+    body: ListAddRequest,
+):
+    """Add a book to the current user's reading list."""
+    book = session.get(Book, body.book_id)
+    if not book:
+        raise HTTPException(status_code=404, detail="Book not found")
+
+    existing = session.exec(
+        select(UserBookList)
+        .where(UserBookList.user_id == current_user.id)
+        .where(UserBookList.book_id == body.book_id)
+    ).first()
+    if existing:
+        raise HTTPException(status_code=409, detail="Book already on list")
+
+    entry = UserBookList(
+        user_id=current_user.id,
+        book_id=body.book_id,
+        created_at=datetime.now(timezone.utc),
+    )
+    session.add(entry)
+    session.commit()
+    session.refresh(entry)
+    return {"id": entry.id, "book_id": entry.book_id}
+
+
+@app.delete("/list/{book_id}", status_code=204)
+@limiter.limit("30/minute")
+def remove_from_list(
+    request: Request,
+    book_id: int = Path(ge=1),
+    *,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+):
+    """Remove a book from the current user's reading list."""
+    stmt = (
+        select(UserBookList)
+        .where(UserBookList.user_id == current_user.id)
+        .where(UserBookList.book_id == book_id)
+    )
+    entry = session.exec(stmt).first()
+    if not entry:
+        raise HTTPException(status_code=404, detail="Book not on list")
+    session.delete(entry)
     session.commit()

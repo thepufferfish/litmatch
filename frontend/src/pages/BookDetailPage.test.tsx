@@ -64,6 +64,12 @@ vi.mock("@/context/AuthContext", () => ({
   useAuth: () => mockUseAuth(),
 }));
 
+vi.mock("@/hooks/useMyList", () => ({
+  useMyListIds: () => ({ data: new Set<number>(), isLoading: false }),
+  useAddToList: () => ({ mutate: vi.fn(), isPending: false }),
+  useRemoveFromList: () => ({ mutate: vi.fn(), isPending: false }),
+}));
+
 // ── Helpers ──────────────────────────────────────────────────────────
 
 function renderWithProviders(bookId = "42") {
@@ -400,10 +406,9 @@ describe("BookDetailPage - Rating Section", () => {
 
     expect(screen.getByText("Your Rating")).toBeInTheDocument();
     expect(screen.getByText(/log in to rate/i)).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /log in/i })).toHaveAttribute(
-      "href",
-      "/login"
-    );
+    const loginLinks = screen.getAllByRole("link", { name: /log in/i });
+    expect(loginLinks.length).toBeGreaterThanOrEqual(1);
+    expect(loginLinks[0]).toHaveAttribute("href", "/login");
   });
 
   it("shows interactive star rating when user is authenticated", () => {

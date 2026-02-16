@@ -27,12 +27,19 @@ vi.mock("@/hooks/useGroupedGenres", () => ({
   useGroupedGenres: () => mockUseGroupedGenres(),
 }));
 
+vi.mock("@/hooks/useMyList", () => ({
+  useMyListIds: () => ({ data: new Set<number>(), isLoading: false }),
+  useAddToList: () => ({ mutate: vi.fn(), isPending: false }),
+  useRemoveFromList: () => ({ mutate: vi.fn(), isPending: false }),
+}));
+
 // -- Test data ---------------------------------------------------------------
 
 const mockProfile: UserProfile = {
   id: 10,
   username: "reader",
   rating_count: 8,
+  list_count: 2,
 };
 
 const mockBook: Book = {

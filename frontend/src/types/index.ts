@@ -123,4 +123,5 @@ export interface UserProfile {
   id: number;
   username: string;
   rating_count: number;
+  list_count: number;
 }

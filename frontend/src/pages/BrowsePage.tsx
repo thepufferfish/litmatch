@@ -8,6 +8,7 @@ import {
 import { useBooks, useSearchBooks } from "@/hooks/useBooks";
 import { useGenres } from "@/hooks/useGenres";
 import { useUserRatingsMap, useSubmitRating, useDeleteRating } from "@/hooks/useRatings";
+import { useMyListIds, useAddToList, useRemoveFromList } from "@/hooks/useMyList";
 import { useAuth } from "@/context/AuthContext";
 import { BookGrid } from "@/components/BookGrid";
 import { GenreSidebar } from "@/components/GenreSidebar";
@@ -29,6 +30,9 @@ export function BrowsePage() {
   const { data: userRatings } = useUserRatingsMap(user?.id);
   const { mutate: submitRating } = useSubmitRating(user?.id);
   const { mutate: deleteRating } = useDeleteRating(user?.id);
+  const { data: myListIds } = useMyListIds(user?.id);
+  const { mutate: addToList } = useAddToList(user?.id);
+  const { mutate: removeFromList } = useRemoveFromList(user?.id);
 
   const handleRate = useCallback(
     (bookId: number, rating: number | null) => {
@@ -250,6 +254,9 @@ export function BrowsePage() {
               userRatings={userRatings}
               onRate={handleRate}
               isAuthenticated={isAuthenticated}
+              myListIds={myListIds}
+              onAddToList={addToList}
+              onRemoveFromList={removeFromList}
             />
             <Pagination
               currentPage={page}

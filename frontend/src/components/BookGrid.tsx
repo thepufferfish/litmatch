@@ -9,6 +9,9 @@ interface BookGridProps {
   onRate?: (bookId: number, rating: number | null) => void;
   isRatingDisabled?: boolean;
   isAuthenticated?: boolean;
+  myListIds?: Set<number>;
+  onAddToList?: (bookId: number) => void;
+  onRemoveFromList?: (bookId: number) => void;
 }
 
 export function BookGrid({
@@ -18,6 +21,9 @@ export function BookGrid({
   onRate,
   isRatingDisabled,
   isAuthenticated,
+  myListIds,
+  onAddToList,
+  onRemoveFromList,
 }: BookGridProps) {
   if (isLoading) {
     return <SkeletonGrid count={24} />;
@@ -37,6 +43,9 @@ export function BookGrid({
           onRate={onRate}
           isRatingDisabled={isRatingDisabled}
           isAuthenticated={isAuthenticated}
+          isOnList={myListIds?.has(book.id)}
+          onAddToList={onAddToList}
+          onRemoveFromList={onRemoveFromList}
         />
       ))}
     </div>

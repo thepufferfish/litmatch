@@ -3,7 +3,7 @@ from typing import Generic, Literal, TypeVar
 
 from pgvector.sqlalchemy import Vector
 from pydantic import BaseModel, field_validator
-from sqlalchemy import Column, TIMESTAMP
+from sqlalchemy import Column, TIMESTAMP, UniqueConstraint
 from sqlmodel import Field, Relationship, SQLModel
 from datetime import date, datetime, timezone
 
@@ -55,6 +55,7 @@ class Book(SQLModel, table=True):
     genres: list['Genre'] = Relationship(back_populates='books', link_model=BookGenreLink)
     reviews: list['Review'] = Relationship(back_populates='book')
     user_ratings: list['UserRating'] = Relationship(back_populates='book')
+    user_book_lists: list['UserBookList'] = Relationship(back_populates='book')
 
 class Genre(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
@@ -187,6 +188,7 @@ class User(UserBase, table=True):
 
     user_ratings: list['UserRating'] = Relationship(back_populates='user')
     refresh_tokens: list['RefreshToken'] = Relationship(back_populates='user')
+    book_list: list['UserBookList'] = Relationship(back_populates='user')
 
 class UserRating(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
@@ -198,6 +200,20 @@ class UserRating(SQLModel, table=True):
 
     user: User = Relationship(back_populates='user_ratings')
     book: Book = Relationship(back_populates='user_ratings')
+
+
+class UserBookList(SQLModel, table=True):
+    __table_args__ = (
+        UniqueConstraint("user_id", "book_id", name="uq_userbooklist_user_book"),
+    )
+
+    id: int | None = Field(default=None, primary_key=True)
+    user_id: int = Field(foreign_key='user.id')
+    book_id: int = Field(foreign_key='book.id')
+    created_at: datetime = Field(sa_column=Column(TIMESTAMP(timezone=True)))
+
+    user: User = Relationship(back_populates='book_list')
+    book: Book = Relationship(back_populates='user_book_lists')
 
 
 class RefreshToken(SQLModel, table=True):
@@ -218,6 +234,10 @@ class RatingCreate(SQLModel):
     rating: int = Field(ge=1, le=5)
 
 
+class ListAddRequest(SQLModel):
+    book_id: int = Field(ge=1)
+
+
 class AuthResponse(SQLModel):
     access_token: str
     token_type: str
@@ -228,6 +248,7 @@ class UserProfile(BaseModel):
     id: int
     username: str
     rating_count: int
+    list_count: int
     model_config = {"from_attributes": True}
 
 

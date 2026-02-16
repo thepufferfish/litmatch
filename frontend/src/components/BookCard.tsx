@@ -2,6 +2,7 @@ import { Link } from "react-router";
 import type { Book } from "@/types";
 import { CriticRatingBadge } from "@/components/CriticRatingBadge";
 import { InlineRating } from "@/components/InlineRating";
+import { ListToggleButton } from "@/components/ListToggleButton";
 
 interface BookCardProps {
   book: Book;
@@ -9,6 +10,9 @@ interface BookCardProps {
   onRate?: (bookId: number, rating: number | null) => void;
   isRatingDisabled?: boolean;
   isAuthenticated?: boolean;
+  isOnList?: boolean;
+  onAddToList?: (bookId: number) => void;
+  onRemoveFromList?: (bookId: number) => void;
 }
 
 export function BookCard({
@@ -17,6 +21,9 @@ export function BookCard({
   onRate,
   isRatingDisabled,
   isAuthenticated,
+  isOnList,
+  onAddToList,
+  onRemoveFromList,
 }: BookCardProps) {
   const sortedGenres = [...(book.genres ?? [])].sort((a, b) =>
     a.name.localeCompare(b.name)
@@ -62,6 +69,19 @@ export function BookCard({
             <p className="text-sm text-ink leading-relaxed line-clamp-[12]">
               {book.description}
             </p>
+          </div>
+        )}
+
+        {/* List toggle button */}
+        {isAuthenticated !== undefined && onAddToList && onRemoveFromList && (
+          <div className="absolute top-2 right-2 z-10">
+            <ListToggleButton
+              bookId={book.id}
+              isOnList={isOnList ?? false}
+              onAdd={onAddToList}
+              onRemove={onRemoveFromList}
+              isAuthenticated={isAuthenticated ?? false}
+            />
           </div>
         )}
       </div>

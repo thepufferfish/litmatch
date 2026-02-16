@@ -22,6 +22,7 @@ const mockProfile: UserProfile = {
   id: 10,
   username: "reader",
   rating_count: 7,
+  list_count: 3,
 };
 
 // -- Helpers -----------------------------------------------------------------

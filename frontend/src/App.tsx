@@ -9,6 +9,7 @@ import { LoginPage } from "@/pages/LoginPage";
 import { RegisterPage } from "@/pages/RegisterPage";
 import { ProfilePage } from "@/pages/ProfilePage";
 import { MyRatingsPage } from "@/pages/MyRatingsPage";
+import { MyListPage } from "@/pages/MyListPage";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -40,6 +41,12 @@ function AuthButtons() {
           className="text-sm text-ink-light hover:text-leather transition-colors"
         >
           My Ratings
+        </Link>
+        <Link
+          to="/list"
+          className="text-sm text-ink-light hover:text-leather transition-colors"
+        >
+          My List
         </Link>
         <span className="text-sm text-ink-light">{user.username}</span>
         <button
@@ -138,6 +145,7 @@ export default function App() {
                   <Route path="/register" element={<RegisterPage />} />
                   <Route path="/profile" element={<ProfilePage />} />
                   <Route path="/ratings" element={<MyRatingsPage />} />
+                  <Route path="/list" element={<MyListPage />} />
                   <Route path="*" element={<NotFoundPage />} />
                 </Routes>
               </ErrorBoundary>

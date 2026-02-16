@@ -13,6 +13,9 @@ interface RecommendationGridProps {
   onRate?: (bookId: number, rating: number | null) => void;
   isRatingDisabled?: boolean;
   isAuthenticated?: boolean;
+  myListIds?: Set<number>;
+  onAddToList?: (bookId: number) => void;
+  onRemoveFromList?: (bookId: number) => void;
 }
 
 const STRATEGY_LABELS: Record<RecommendationStrategy, string> = {
@@ -25,6 +28,9 @@ export function RecommendationGrid({
   onRate,
   isRatingDisabled,
   isAuthenticated,
+  myListIds,
+  onAddToList,
+  onRemoveFromList,
 }: RecommendationGridProps) {
   const [activeTab, setActiveTab] = useState<Tab>("fiction");
   const [fictionGenreId, setFictionGenreId] = useState<number | undefined>(undefined);
@@ -130,6 +136,9 @@ export function RecommendationGrid({
                   onRate={onRate}
                   isRatingDisabled={isRatingDisabled}
                   isAuthenticated={isAuthenticated}
+                  isOnList={myListIds?.has(book.id)}
+                  onAddToList={onAddToList}
+                  onRemoveFromList={onRemoveFromList}
                 />
               ))}
             </div>

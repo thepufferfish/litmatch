@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { Link, useNavigate } from "react-router";
 import { useAuth } from "@/context/AuthContext";
 import { useUserProfile } from "@/hooks/useUserProfile";
+import { useMyListIds, useAddToList, useRemoveFromList } from "@/hooks/useMyList";
 import { RecommendationGrid } from "@/components/RecommendationGrid";
 import { SkeletonGrid } from "@/components/Skeleton";
 
@@ -24,6 +25,9 @@ export function ProfilePage() {
   const { data: profile, isLoading: profileLoading } = useUserProfile(
     isAuthenticated
   );
+  const { data: myListIds } = useMyListIds(user?.id);
+  const { mutate: addToList } = useAddToList(user?.id);
+  const { mutate: removeFromList } = useRemoveFromList(user?.id);
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
@@ -62,6 +66,14 @@ export function ProfilePage() {
           >
             My Ratings
           </Link>
+          {" \u00B7 "}
+          {profile?.list_count ?? 0} on{" "}
+          <Link
+            to="/list"
+            className="text-leather hover:text-leather-light transition-colors"
+          >
+            My List
+          </Link>
         </p>
       </div>
 
@@ -88,7 +100,12 @@ export function ProfilePage() {
 
       {/* Recommendations */}
       <section>
-        <RecommendationGrid isAuthenticated={isAuthenticated} />
+        <RecommendationGrid
+          isAuthenticated={isAuthenticated}
+          myListIds={myListIds}
+          onAddToList={addToList}
+          onRemoveFromList={removeFromList}
+        />
       </section>
     </div>
   );

@@ -1,13 +1,17 @@
 import { useCallback, useEffect } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router";
 import { useAuth } from "@/context/AuthContext";
-import { useUserRatedBooksPaginated } from "@/hooks/useUserRatedBooks";
+import {
+  useMyListBooksPaginated,
+  useMyListIds,
+  useAddToList,
+  useRemoveFromList,
+} from "@/hooks/useMyList";
 import {
   useUserRatingsMap,
   useSubmitRating,
   useDeleteRating,
 } from "@/hooks/useRatings";
-import { useMyListIds, useAddToList, useRemoveFromList } from "@/hooks/useMyList";
 import { BookGrid } from "@/components/BookGrid";
 import { SortSelect, SORT_OPTIONS } from "@/components/SortSelect";
 import { Pagination } from "@/components/Pagination";
@@ -17,7 +21,7 @@ import type { BookSortOption } from "@/types";
 const VALID_SORTS = new Set<string>(SORT_OPTIONS.map((o) => o.value));
 const PAGE_LIMIT = 12;
 
-function RatingsLoading() {
+function ListLoading() {
   return (
     <div className="space-y-8">
       <div className="h-8 skeleton-shimmer rounded w-48" />
@@ -27,7 +31,7 @@ function RatingsLoading() {
   );
 }
 
-export function MyRatingsPage() {
+export function MyListPage() {
   const { user, isAuthenticated, isLoading: authLoading } = useAuth();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -40,7 +44,7 @@ export function MyRatingsPage() {
       : undefined;
 
   const { data: booksData, isLoading: booksLoading } =
-    useUserRatedBooksPaginated({ page, limit: PAGE_LIMIT, sort });
+    useMyListBooksPaginated(user?.id, { page, limit: PAGE_LIMIT, sort });
 
   const { data: userRatings } = useUserRatingsMap(user?.id);
   const { mutate: submitRating } = useSubmitRating(user?.id);
@@ -61,14 +65,12 @@ export function MyRatingsPage() {
     [submitRating, deleteRating]
   );
 
-  // Redirect to login if not authenticated
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
       void navigate("/login");
     }
   }, [authLoading, isAuthenticated, navigate]);
 
-  // Redirect to page 1 when current page exceeds total pages
   useEffect(() => {
     if (booksData && booksData.total > 0 && booksData.limit > 0) {
       const totalPages = Math.ceil(booksData.total / booksData.limit);
@@ -81,7 +83,7 @@ export function MyRatingsPage() {
   }, [booksData, page, searchParams, setSearchParams]);
 
   if (authLoading) {
-    return <RatingsLoading />;
+    return <ListLoading />;
   }
 
   if (!isAuthenticated || !user) {
@@ -120,18 +122,17 @@ export function MyRatingsPage() {
 
   return (
     <div className="space-y-8">
-      {/* Page heading */}
       <div>
-        <h1 className="font-serif text-3xl font-bold text-ink">My Ratings</h1>
+        <h1 className="font-serif text-3xl font-bold text-ink">My List</h1>
         <p className="text-muted mt-1">
-          {total} {total === 1 ? "book" : "books"} rated
+          {total} {total === 1 ? "book" : "books"} saved
         </p>
       </div>
 
       {isEmpty ? (
         <div className="text-center py-12 bg-white rounded-lg border border-parchment">
           <p className="text-muted mb-4">
-            You haven&apos;t rated any books yet.
+            You haven&apos;t added any books to your list yet.
           </p>
           <Link
             to="/"
@@ -142,12 +143,10 @@ export function MyRatingsPage() {
         </div>
       ) : (
         <>
-          {/* Sort control */}
           <div className="flex justify-end">
             <SortSelect value={sort} onChange={handleSortChange} />
           </div>
 
-          {/* Book grid */}
           <BookGrid
             books={items}
             isLoading={booksLoading}
@@ -159,7 +158,6 @@ export function MyRatingsPage() {
             onRemoveFromList={removeFromList}
           />
 
-          {/* Pagination */}
           <Pagination
             currentPage={page}
             totalPages={totalPages}
