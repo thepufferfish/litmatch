@@ -126,10 +126,10 @@ export function BookCard({
           </>
         )}
 
-        {/* List toggle button — above overlay, visible on hover or when on list */}
+        {/* List toggle button — above overlay, always visible on mobile, visible on hover on desktop or when on list */}
         {isAuthenticated !== undefined && onAddToList && onRemoveFromList && (
           <div className={`absolute top-2 right-2 z-20 transition-opacity duration-300 ${
-            isOnList ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+            isOnList ? "opacity-100" : "opacity-100 sm:opacity-0 sm:group-hover:opacity-100"
           }`}>
             <ListToggleButton
               bookId={book.id}
