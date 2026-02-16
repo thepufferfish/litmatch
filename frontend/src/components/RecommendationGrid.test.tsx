@@ -98,11 +98,12 @@ function makeInfiniteQueryResult(
   pages: PaginatedRecommendationResponse[],
   overrides: Record<string, unknown> = {}
 ) {
+  const lastPage = pages[pages.length - 1];
   return {
     data: { pages, pageParams: pages.map((_, i) => i * 20) },
     isLoading: false,
     isFetchingNextPage: false,
-    hasNextPage: pages.length > 0 && pages[pages.length - 1].has_more,
+    hasNextPage: pages.length > 0 && lastPage?.has_more === true,
     fetchNextPage: vi.fn(),
     ...overrides,
   };
@@ -138,12 +139,12 @@ function renderGrid(props?: {
       return makeInfiniteQueryResult(
         fictionPages,
         fictionOverrides
-      ) as ReturnType<typeof useInfiniteRecommendationsHook.useInfiniteRecommendations>;
+      ) as unknown as ReturnType<typeof useInfiniteRecommendationsHook.useInfiniteRecommendations>;
     }
     return makeInfiniteQueryResult(
       nonfictionPages,
       nonfictionOverrides
-    ) as ReturnType<typeof useInfiniteRecommendationsHook.useInfiniteRecommendations>;
+    ) as unknown as ReturnType<typeof useInfiniteRecommendationsHook.useInfiniteRecommendations>;
   });
 
   const queryClient = new QueryClient({

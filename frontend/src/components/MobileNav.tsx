@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef } from "react";
 import { Link } from "react-router";
-import type { User } from "@/types";
+import type { UserPublic } from "@/types";
 
 interface MobileNavProps {
-  user: User | null;
+  user: UserPublic | null;
   isAuthenticated: boolean;
   onLogout: () => void;
 }
