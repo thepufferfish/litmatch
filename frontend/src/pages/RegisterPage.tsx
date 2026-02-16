@@ -67,7 +67,7 @@ export function RegisterPage() {
           <div>
             <label
               htmlFor="username"
-              className="block text-sm font-medium text-ink-light mb-1.5"
+              className="block text-sm sm:text-base font-medium text-ink-light mb-1.5"
             >
               Username
             </label>
@@ -87,7 +87,7 @@ export function RegisterPage() {
           <div>
             <label
               htmlFor="password"
-              className="block text-sm font-medium text-ink-light mb-1.5"
+              className="block text-sm sm:text-base font-medium text-ink-light mb-1.5"
             >
               Password
             </label>
@@ -107,7 +107,7 @@ export function RegisterPage() {
           <div>
             <label
               htmlFor="confirmPassword"
-              className="block text-sm font-medium text-ink-light mb-1.5"
+              className="block text-sm sm:text-base font-medium text-ink-light mb-1.5"
             >
               Confirm Password
             </label>

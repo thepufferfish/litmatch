@@ -57,7 +57,7 @@ export function BookDetailPage() {
             />
           </svg>
         </div>
-        <h2 className="font-serif text-2xl text-ink mb-2">Book not found</h2>
+        <h2 className="font-serif text-xl sm:text-2xl text-ink mb-2">Book not found</h2>
         <p className="text-muted mb-6">
           The book you&apos;re looking for doesn&apos;t exist or has been
           removed.
@@ -133,7 +133,7 @@ export function BookDetailPage() {
 
         {/* Book info */}
         <div className="flex-1 min-w-0">
-          <h1 className="font-serif text-2xl sm:text-3xl lg:text-4xl font-bold text-ink leading-tight">
+          <h1 className="font-serif text-xl sm:text-2xl md:text-3xl lg:text-4xl font-bold text-ink leading-tight">
             {book.title}
           </h1>
 
@@ -174,7 +174,7 @@ export function BookDetailPage() {
 
           {/* Description */}
           <div className="mt-8">
-            <h2 className="font-serif text-xl text-ink mb-3">About this book</h2>
+            <h2 className="font-serif text-lg sm:text-xl text-ink mb-3">About this book</h2>
             {book.description ? (
               <p className="text-ink-light leading-relaxed whitespace-pre-line">
                 {book.description}
@@ -186,7 +186,7 @@ export function BookDetailPage() {
 
           {/* Your Rating section */}
           <div className="mt-10">
-            <h2 className="font-serif text-xl text-ink mb-4">Your Rating</h2>
+            <h2 className="font-serif text-lg sm:text-xl text-ink mb-4">Your Rating</h2>
 
             {!isAuthenticated ? (
               <p className="text-muted">
@@ -294,10 +294,10 @@ export function BookDetailPage() {
                 />
               </div>
             )}
-            <h2 className="font-serif text-xl text-ink mb-4">
+            <h2 className="font-serif text-lg sm:text-xl text-ink mb-4">
               Critic Reviews
               {reviews && reviews.length > 0 && (
-                <span className="text-base font-sans text-muted ml-2">
+                <span className="text-sm sm:text-base font-sans text-muted ml-2">
                   ({reviews.length})
                 </span>
               )}
