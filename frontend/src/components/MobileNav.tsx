@@ -107,6 +107,13 @@ export function MobileNav({ user, isAuthenticated, onLogout }: MobileNavProps) {
 
               {/* Navigation links - min 44x44px touch targets */}
               <Link
+                to="/"
+                onClick={closeMenu}
+                className="block px-4 py-3 rounded-lg text-base text-ink hover:bg-parchment transition-colors"
+              >
+                Browse
+              </Link>
+              <Link
                 to="/profile"
                 onClick={closeMenu}
                 className="block px-4 py-3 rounded-lg text-base text-ink hover:bg-parchment transition-colors"
@@ -144,6 +151,18 @@ export function MobileNav({ user, isAuthenticated, onLogout }: MobileNavProps) {
             </>
           ) : (
             <>
+              {/* Browse link for non-authenticated users */}
+              <Link
+                to="/"
+                onClick={closeMenu}
+                className="block px-4 py-3 rounded-lg text-base text-ink hover:bg-parchment transition-colors"
+              >
+                Browse
+              </Link>
+
+              {/* Divider */}
+              <div className="border-t border-parchment my-2" />
+
               {/* Login/Register links */}
               <Link
                 to="/login"
