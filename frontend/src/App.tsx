@@ -1,3 +1,4 @@
+import React from "react";
 import { BrowserRouter, Routes, Route, Link } from "react-router";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "react-hot-toast";
@@ -92,7 +93,7 @@ function AuthButtons() {
 
 function Header() {
   return (
-    <header className="sticky top-0 z-50 bg-cream/95 md:backdrop-blur-sm border-b border-parchment">
+    <header className="sticky top-0 z-50 bg-cream border-b border-parchment md:bg-cream/95 md:backdrop-blur-sm">
       <div className="max-w-[var(--container-max)] mx-auto px-6 py-4 flex items-center justify-between">
         <Link to="/" className="group flex items-center gap-3">
           <div className="w-9 h-9 rounded-lg bg-leather flex items-center justify-center">
@@ -141,7 +142,25 @@ function NotFoundPage() {
   );
 }
 
+function useIsMobile() {
+  const [isMobile, setIsMobile] = React.useState(false);
+
+  React.useEffect(() => {
+    const mediaQuery = window.matchMedia("(max-width: 767px)");
+    setIsMobile(mediaQuery.matches);
+
+    const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches);
+    mediaQuery.addEventListener("change", handler);
+
+    return () => mediaQuery.removeEventListener("change", handler);
+  }, []);
+
+  return isMobile;
+}
+
 export default function App() {
+  const isMobile = useIsMobile();
+
   return (
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
@@ -165,9 +184,9 @@ export default function App() {
             </div>
           </div>
           <Toaster
-            position="bottom-center"
+            position={isMobile ? "bottom-center" : "bottom-right"}
             toastOptions={{
-              duration: 4000,
+              duration: isMobile ? 3000 : 4000,
               style: {
                 background: "#2c1810",
                 color: "#fdf9f0",
