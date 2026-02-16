@@ -24,6 +24,16 @@ export function SkeletonGrid({ count = 24 }: { count?: number }) {
   );
 }
 
+export function SkeletonRow({ count = 4 }: { count?: number }) {
+  return (
+    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+      {Array.from({ length: count }).map((_, i) => (
+        <SkeletonCard key={i} />
+      ))}
+    </div>
+  );
+}
+
 export function SkeletonDetail() {
   return (
     <div className="max-w-4xl mx-auto animate-pulse">

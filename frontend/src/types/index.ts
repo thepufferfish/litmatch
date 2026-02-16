@@ -114,9 +114,13 @@ export interface RecommendationMeta {
   category: RecommendationCategory;
 }
 
-export interface RecommendationResponse {
+export interface PaginatedRecommendationResponse {
   items: Book[];
   meta: RecommendationMeta;
+  total: number;
+  offset: number;
+  limit: number;
+  has_more: boolean;
 }
 
 export interface UserProfile {

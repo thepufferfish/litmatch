@@ -1,10 +1,11 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import type { RecommendationStrategy } from "@/types";
 import { BookCard } from "@/components/BookCard";
-import { SkeletonGrid } from "@/components/Skeleton";
+import { SkeletonGrid, SkeletonRow } from "@/components/Skeleton";
 import { SubgenreFilter } from "@/components/SubgenreFilter";
 import { useGroupedGenres } from "@/hooks/useGroupedGenres";
-import { useRecommendations } from "@/hooks/useRecommendations";
+import { useInfiniteRecommendations } from "@/hooks/useInfiniteRecommendations";
+import { useIntersectionObserver } from "@/hooks/useIntersectionObserver";
 
 type Tab = "fiction" | "nonfiction";
 
@@ -38,30 +39,43 @@ export function RecommendationGrid({
 
   const { data: groupedGenres, isLoading: genresLoading } = useGroupedGenres();
 
-  const { data: fictionData, isLoading: fictionLoading } = useRecommendations({
+  const fictionQuery = useInfiniteRecommendations({
     category: "fiction",
     genreId: fictionGenreId,
     enabled: isAuthenticated,
   });
 
-  const { data: nonfictionData, isLoading: nonfictionLoading } = useRecommendations({
+  const nonfictionQuery = useInfiniteRecommendations({
     category: "nonfiction",
     genreId: nonfictionGenreId,
     enabled: isAuthenticated,
   });
 
-  const isLoading = fictionLoading || nonfictionLoading || genresLoading;
+  const activeQuery = activeTab === "fiction" ? fictionQuery : nonfictionQuery;
 
-  if (isLoading || !fictionData || !nonfictionData) {
+  const allItems = useMemo(
+    () => activeQuery.data?.pages.flatMap((p) => p.items) ?? [],
+    [activeQuery.data]
+  );
+
+  const meta = activeQuery.data?.pages[0]?.meta;
+
+  const sentinelRef = useIntersectionObserver({
+    enabled: activeQuery.hasNextPage && !activeQuery.isFetchingNextPage,
+    onIntersect: () => activeQuery.fetchNextPage(),
+  });
+
+  const isLoading = fictionQuery.isLoading || nonfictionQuery.isLoading || genresLoading;
+
+  if (isLoading) {
     return <SkeletonGrid count={8} />;
   }
 
-  const activeData = activeTab === "fiction" ? fictionData : nonfictionData;
   const activeGenreId = activeTab === "fiction" ? fictionGenreId : nonfictionGenreId;
   const setActiveGenreId = activeTab === "fiction" ? setFictionGenreId : setNonfictionGenreId;
   const activeGenres = activeTab === "fiction" ? groupedGenres?.fiction ?? [] : groupedGenres?.nonfiction ?? [];
 
-  const strategyLabel = STRATEGY_LABELS[activeData.meta.strategy];
+  const strategyLabel = meta ? STRATEGY_LABELS[meta.strategy] : undefined;
   const tabLabel = activeTab === "fiction" ? "fiction" : "non-fiction";
 
   // Find the selected genre name
@@ -102,7 +116,7 @@ export function RecommendationGrid({
       </div>
 
       <div className="flex flex-col lg:flex-row gap-6">
-        {/* Subgenre filter — left sidebar on desktop, horizontal pills on mobile/tablet */}
+        {/* Subgenre filter -- left sidebar on desktop, horizontal pills on mobile/tablet */}
         {groupedGenres && (
           <SubgenreFilter
             genres={activeGenres}
@@ -122,26 +136,47 @@ export function RecommendationGrid({
           )}
 
           {/* Content */}
-          {activeData.items.length === 0 ? (
+          {allItems.length === 0 && !activeQuery.isLoading ? (
             <p className="text-muted text-center py-8">
               No {genreLabel}{tabLabel} recommendations yet
             </p>
           ) : (
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-              {activeData.items.map((book) => (
-                <BookCard
-                  key={book.id}
-                  book={book}
-                  userRating={userRatings?.get(book.id)}
-                  onRate={onRate}
-                  isRatingDisabled={isRatingDisabled}
-                  isAuthenticated={isAuthenticated}
-                  isOnList={myListIds?.has(book.id)}
-                  onAddToList={onAddToList}
-                  onRemoveFromList={onRemoveFromList}
-                />
-              ))}
-            </div>
+            <>
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                {allItems.map((book) => (
+                  <BookCard
+                    key={book.id}
+                    book={book}
+                    userRating={userRatings?.get(book.id)}
+                    onRate={onRate}
+                    isRatingDisabled={isRatingDisabled}
+                    isAuthenticated={isAuthenticated}
+                    isOnList={myListIds?.has(book.id)}
+                    onAddToList={onAddToList}
+                    onRemoveFromList={onRemoveFromList}
+                  />
+                ))}
+              </div>
+
+              {/* Loading skeleton for next page */}
+              {activeQuery.isFetchingNextPage && (
+                <div className="mt-6">
+                  <SkeletonRow count={4} />
+                </div>
+              )}
+
+              {/* Sentinel element for intersection observer */}
+              {activeQuery.hasNextPage && (
+                <div ref={sentinelRef} className="h-4" data-testid="scroll-sentinel" />
+              )}
+
+              {/* End of list message */}
+              {!activeQuery.hasNextPage && allItems.length > 0 && (
+                <p className="text-muted text-center py-8 text-sm">
+                  You've seen all recommendations
+                </p>
+              )}
+            </>
           )}
         </div>
       </div>
