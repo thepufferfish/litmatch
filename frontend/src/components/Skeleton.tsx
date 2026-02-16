@@ -34,6 +34,29 @@ export function SkeletonRow({ count = 4 }: { count?: number }) {
   );
 }
 
+function SkeletonCompactCard() {
+  return (
+    <div className="w-40 sm:w-44 md:w-48 shrink-0 rounded-lg overflow-hidden bg-white shadow-sm border border-parchment">
+      <div className="aspect-[2/3] skeleton-shimmer" />
+      <div className="p-3 space-y-2">
+        <div className="h-4 skeleton-shimmer rounded w-3/4" />
+        <div className="h-3 skeleton-shimmer rounded w-1/2" />
+        <div className="h-4 skeleton-shimmer rounded-full w-14" />
+      </div>
+    </div>
+  );
+}
+
+export function SkeletonCarousel({ count = 5 }: { count?: number }) {
+  return (
+    <div className="flex gap-4 overflow-hidden">
+      {Array.from({ length: count }).map((_, i) => (
+        <SkeletonCompactCard key={i} />
+      ))}
+    </div>
+  );
+}
+
 export function SkeletonDetail() {
   return (
     <div className="max-w-4xl mx-auto animate-pulse">

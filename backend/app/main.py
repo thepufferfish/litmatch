@@ -27,7 +27,12 @@ from backend.app.config import (
     REFRESH_TOKEN_EXPIRE_DAYS,
 )
 from backend.app.rate_limit import limiter
-from backend.app.queries import build_rating_subquery
+from backend.app.queries import (
+    build_fts_filter,
+    build_rating_subquery,
+    find_similar_books_by_embedding,
+    find_similar_books_by_genre,
+)
 from backend.app.recommendations import (
     MIN_RATINGS,
     CategoryFilter,
@@ -348,7 +353,6 @@ def read_books(
                 status_code=400,
                 detail="Search query must be at least 2 characters",
             )
-        from backend.app.queries import build_fts_filter
         fts_filter, fts_rank = build_fts_filter(q_stripped)
         stmt = stmt.where(fts_filter)
         count_stmt = count_stmt.where(fts_filter)
@@ -418,6 +422,36 @@ def read_book(*, session: Session = Depends(get_session), book_id: int):
     if not book:
         raise HTTPException(status_code=404, detail="Book not found")
     return _annotate_books_with_ratings(session, [book])[0]
+
+
+@app.get("/books/{book_id}/similar", response_model=list[BookRead])
+@limiter.limit("30/minute")
+def get_similar_books(
+    request: Request,
+    book_id: int = Path(ge=1),
+    *,
+    session: Session = Depends(get_session),
+    limit: int = Query(default=10, ge=1, le=20),
+):
+    """Return books similar to the given book.
+
+    Uses embedding-based cosine distance when the book has an embedding.
+    Falls back to genre-based overlap when no embedding is available.
+    """
+    stmt = select(Book).options(selectinload(Book.genres)).where(Book.id == book_id)
+    book = session.exec(stmt).first()
+    if not book:
+        raise HTTPException(status_code=404, detail="Book not found")
+
+    if book.embedding is not None:
+        similar = find_similar_books_by_embedding(session, book, limit=limit)
+    else:
+        genre_ids = [g.id for g in book.genres]
+        similar = find_similar_books_by_genre(
+            session, book_id=book.id, genre_ids=genre_ids, limit=limit
+        )
+
+    return _annotate_books_with_ratings(session, similar)
 
 
 # ---------------------------------------------------------------------------

@@ -7,6 +7,7 @@ import { useAuth } from "@/context/AuthContext";
 import { CriticRatingBadge } from "@/components/CriticRatingBadge";
 import { ReviewList } from "@/components/ReviewList";
 import { StarRating } from "@/components/StarRating";
+import { SimilarBooksCarousel } from "@/components/SimilarBooksCarousel";
 import { SkeletonDetail } from "@/components/Skeleton";
 import { slugify } from "@/utils/slugify";
 
@@ -318,6 +319,11 @@ export function BookDetailPage() {
             )}
           </div>
         </div>
+      </div>
+
+      {/* Similar Books section */}
+      <div className="mt-12 border-t border-parchment pt-8">
+        <SimilarBooksCarousel bookId={bookId} />
       </div>
     </div>
   );
