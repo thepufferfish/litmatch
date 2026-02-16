@@ -1,30 +1,36 @@
 import { render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import { GenreSidebar } from "./GenreSidebar";
-import type { Genre } from "@/types";
+import type { GroupedGenres } from "@/types";
 
-// -- Mock useGenres hook -----------------------------------------------------
+// -- Mock useGroupedGenres hook ----------------------------------------------
 
-const mockUseGenres = vi.fn();
+const mockUseGroupedGenres = vi.fn();
 
-vi.mock("@/hooks/useGenres", () => ({
-  useGenres: () => mockUseGenres(),
+vi.mock("@/hooks/useGroupedGenres", () => ({
+  useGroupedGenres: () => mockUseGroupedGenres(),
 }));
 
 // -- Test data ---------------------------------------------------------------
 
-const mockGenres: Genre[] = [
-  { id: 1, name: "Fiction" },
-  { id: 2, name: "Non-Fiction" },
-  { id: 3, name: "Biography" },
-];
+const mockGroupedGenres: GroupedGenres = {
+  fiction: [
+    { id: 1, name: "Mystery" },
+    { id: 2, name: "Romance" },
+  ],
+  nonfiction: [
+    { id: 3, name: "Biography" },
+    { id: 4, name: "History" },
+  ],
+  unknown: [],
+};
 
 // -- Helpers -----------------------------------------------------------------
 
-function renderSidebar(activeGenreSlug?: string) {
+function renderSidebar(activeGenreSlug?: string, activeCategory?: "fiction" | "nonfiction") {
   return render(
     <MemoryRouter>
-      <GenreSidebar activeGenreSlug={activeGenreSlug} />
+      <GenreSidebar activeGenreSlug={activeGenreSlug} activeCategory={activeCategory} />
     </MemoryRouter>
   );
 }
@@ -38,7 +44,7 @@ describe("GenreSidebar", () => {
 
   describe("loading state", () => {
     it("shows skeleton elements while genres are loading", () => {
-      mockUseGenres.mockReturnValue({
+      mockUseGroupedGenres.mockReturnValue({
         data: undefined,
         isLoading: true,
       });
@@ -53,8 +59,8 @@ describe("GenreSidebar", () => {
 
   describe("empty state", () => {
     it("renders nothing when genres array is empty", () => {
-      mockUseGenres.mockReturnValue({
-        data: [],
+      mockUseGroupedGenres.mockReturnValue({
+        data: { fiction: [], nonfiction: [], unknown: [] },
         isLoading: false,
       });
 
@@ -64,7 +70,7 @@ describe("GenreSidebar", () => {
     });
 
     it("renders nothing when genres is undefined", () => {
-      mockUseGenres.mockReturnValue({
+      mockUseGroupedGenres.mockReturnValue({
         data: undefined,
         isLoading: false,
       });
@@ -77,8 +83,8 @@ describe("GenreSidebar", () => {
 
   describe("with genres data", () => {
     beforeEach(() => {
-      mockUseGenres.mockReturnValue({
-        data: mockGenres,
+      mockUseGroupedGenres.mockReturnValue({
+        data: mockGroupedGenres,
         isLoading: false,
       });
     });
@@ -92,8 +98,9 @@ describe("GenreSidebar", () => {
     it("renders genre names sorted alphabetically", () => {
       renderSidebar();
 
-      // Should find all three genre names
+      // Should find genre names from both fiction and nonfiction
       expect(screen.getAllByText("Biography").length).toBeGreaterThanOrEqual(1);
+      expect(screen.getAllByText("Mystery").length).toBeGreaterThanOrEqual(1);
       expect(screen.getAllByText("Fiction").length).toBeGreaterThanOrEqual(1);
       expect(screen.getAllByText("Non-Fiction").length).toBeGreaterThanOrEqual(1);
     });
@@ -106,25 +113,23 @@ describe("GenreSidebar", () => {
         link.getAttribute("href")?.startsWith("/genre/")
       );
 
-      // Should have links for all 3 genres
-      expect(genreLinks.length).toBeGreaterThanOrEqual(3);
+      // Should have links for all 4 genres
+      expect(genreLinks.length).toBeGreaterThanOrEqual(4);
 
-      // Verify slugified URLs exist
+      // Verify slugified URLs exist with category param
       const hrefs = genreLinks.map((l) => l.getAttribute("href"));
-      expect(hrefs).toContain("/genre/fiction");
-      expect(hrefs).toContain("/genre/non-fiction");
-      expect(hrefs).toContain("/genre/biography");
+      expect(hrefs).toContain("/genre/mystery?category=fiction");
+      expect(hrefs).toContain("/genre/romance?category=fiction");
+      expect(hrefs).toContain("/genre/biography?category=nonfiction");
+      expect(hrefs).toContain("/genre/history?category=nonfiction");
     });
 
     it("highlights the active genre", () => {
-      renderSidebar("fiction");
+      renderSidebar("mystery", "fiction");
 
-      // The "All Books" link in the desktop sidebar should not be highlighted
-      // The "Fiction" link should be highlighted
-      // We check for the active class pattern (bg-leather text-white)
-      const allFictionLinks = screen.getAllByText("Fiction");
-      // At least one should have the active styling
-      const hasActive = allFictionLinks.some((el) => {
+      // The "Mystery" link should be highlighted
+      const allMysteryLinks = screen.getAllByText("Mystery");
+      const hasActive = allMysteryLinks.some((el) => {
         const link = el.closest("a");
         return link?.className.includes("bg-leather");
       });
@@ -153,27 +158,27 @@ describe("GenreSidebar", () => {
       renderSidebar();
 
       const options = screen.getAllByRole("option");
-      // "All Genres" + 3 genre options
-      expect(options).toHaveLength(4);
+      // "All Genres" + 4 genre options
+      expect(options).toHaveLength(5);
     });
   });
 
   describe("mobile genre select navigation", () => {
     it("renders the active genre slug as the selected option", () => {
-      mockUseGenres.mockReturnValue({
-        data: mockGenres,
+      mockUseGroupedGenres.mockReturnValue({
+        data: mockGroupedGenres,
         isLoading: false,
       });
 
-      renderSidebar("fiction");
+      renderSidebar("mystery", "fiction");
 
       const select = screen.getByRole("combobox");
-      expect(select).toHaveValue("fiction");
+      expect(select).toHaveValue("/genre/mystery?category=fiction");
     });
 
     it("defaults to empty string (All Genres) when no genre is active", () => {
-      mockUseGenres.mockReturnValue({
-        data: mockGenres,
+      mockUseGroupedGenres.mockReturnValue({
+        data: mockGroupedGenres,
         isLoading: false,
       });
 

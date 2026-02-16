@@ -57,6 +57,10 @@ export function BrowsePage() {
   const sort = rawSort && VALID_SORTS.has(rawSort)
     ? (rawSort as BookSortOption)
     : undefined;
+  const categoryParam = searchParams.get("category");
+  const category = categoryParam === "fiction" || categoryParam === "nonfiction"
+    ? categoryParam
+    : undefined;
 
   // Determine which query to use
   const isSearching = searchQuery.length >= 2;
@@ -65,6 +69,7 @@ export function BrowsePage() {
     page,
     genre: genreId,
     sort,
+    category,
   });
 
   const searchBooksQuery = useSearchBooks({
@@ -187,7 +192,7 @@ export function BrowsePage() {
 
   return (
     <div className="flex flex-col lg:flex-row gap-8">
-      <GenreSidebar activeGenreSlug={genreSlug} />
+      <GenreSidebar activeGenreSlug={genreSlug} activeCategory={category} />
 
       <main className="flex-1 min-w-0">
         {/* Search bar + Sort */}
@@ -218,7 +223,14 @@ export function BrowsePage() {
 
         {activeGenreName && !isSearching && (
           <div className="mb-6">
-            <h2 className="font-serif text-2xl text-ink">{activeGenreName}</h2>
+            <h2 className="font-serif text-2xl text-ink">
+              {category && (
+                <span className="text-muted text-lg font-normal">
+                  {category === "fiction" ? "Fiction" : "Non-Fiction"} &rsaquo;{" "}
+                </span>
+              )}
+              {activeGenreName}
+            </h2>
           </div>
         )}
 

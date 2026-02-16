@@ -240,3 +240,17 @@ class RecommendationMeta(BaseModel):
 class RecommendationResponse(BaseModel):
     items: list[BookRead]
     meta: RecommendationMeta
+
+
+class GenreSimple(BaseModel):
+    """Simple genre representation for grouped genres response."""
+    id: int
+    name: str
+    model_config = {"from_attributes": True}
+
+
+class GroupedGenresResponse(BaseModel):
+    """Response model for genres grouped by fiction/nonfiction/unknown."""
+    fiction: list[GenreSimple]
+    nonfiction: list[GenreSimple]
+    unknown: list[GenreSimple]

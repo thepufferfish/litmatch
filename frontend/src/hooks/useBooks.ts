@@ -26,15 +26,17 @@ interface UseBooksParams {
   limit?: number;
   genre?: number;
   sort?: BookSortOption;
+  category?: "fiction" | "nonfiction";
 }
 
-export function useBooks({ page = 1, limit = 24, genre, sort }: UseBooksParams = {}) {
+export function useBooks({ page = 1, limit = 24, genre, sort, category }: UseBooksParams = {}) {
   return useQuery({
-    queryKey: ["books", { page, limit, genre, sort }],
+    queryKey: ["books", { page, limit, genre, sort, category }],
     queryFn: async () => {
       const params: Record<string, string | number> = { page, limit };
       if (genre) params.genre = genre;
       if (sort) params.sort = sort;
+      if (category) params.category = category;
       const { data } = await api.get<PaginatedResponse<Book>>("/books/", {
         params,
       });

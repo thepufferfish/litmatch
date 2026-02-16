@@ -9,7 +9,7 @@ from sqlalchemy.orm import selectinload
 from sqlmodel import Session, func, select
 
 from backend.app.queries import build_rating_subquery
-from backend.db.models import Book, Review, UserRating
+from backend.db.models import Book, BookGenreLink, Review, UserRating
 
 MIN_RATINGS = 5
 CategoryFilter = Literal["fiction", "nonfiction", "all"]
@@ -94,6 +94,7 @@ def get_popular_books(
     exclude_book_ids: set[int],
     category: CategoryFilter = "all",
     limit: int = 20,
+    genre_id: int | None = None,
 ) -> list[Book]:
     """Return top-rated books by average critic (Review) rating.
 
@@ -105,6 +106,7 @@ def get_popular_books(
         exclude_book_ids: Book IDs to exclude (already rated).
         category: Filter by "fiction", "nonfiction", or "all".
         limit: Maximum number of results.
+        genre_id: Optional genre ID to filter results.
 
     Returns:
         List of Book objects ordered by average critic rating descending.
@@ -129,6 +131,11 @@ def get_popular_books(
     elif category == "nonfiction":
         stmt = stmt.where(Book.is_fiction == False)  # noqa: E712
 
+    if genre_id is not None:
+        stmt = stmt.join(BookGenreLink, Book.id == BookGenreLink.book_id).where(
+            BookGenreLink.genre_id == genre_id
+        )
+
     stmt = stmt.order_by(
         rating_sub.c.avg_rating.desc().nulls_last(),
         rating_sub.c.review_count.desc(),
@@ -143,11 +150,12 @@ def find_nearest_books(
     exclude_book_ids: set[int],
     category: CategoryFilter = "all",
     limit: int = 20,
+    genre_id: int | None = None,
 ) -> list[Book]:
     """Find nearest books by cosine distance using pgvector.
 
     Uses pgvector's cosine_distance operator on Book.embedding.
-    Excludes specified book IDs and optionally filters by category.
+    Excludes specified book IDs and optionally filters by category and genre.
 
     Args:
         session: Active database session.
@@ -155,6 +163,7 @@ def find_nearest_books(
         exclude_book_ids: Book IDs to exclude (already rated).
         category: Filter by "fiction", "nonfiction", or "all".
         limit: Maximum number of results.
+        genre_id: Optional genre ID to filter results.
 
     Returns:
         List of Book objects ordered by cosine similarity.
@@ -176,6 +185,11 @@ def find_nearest_books(
         stmt = stmt.where(Book.is_fiction == True)  # noqa: E712
     elif category == "nonfiction":
         stmt = stmt.where(Book.is_fiction == False)  # noqa: E712
+
+    if genre_id is not None:
+        stmt = stmt.join(BookGenreLink, Book.id == BookGenreLink.book_id).where(
+            BookGenreLink.genre_id == genre_id
+        )
 
     stmt = stmt.order_by(
         Book.embedding.cosine_distance(user_embedding)

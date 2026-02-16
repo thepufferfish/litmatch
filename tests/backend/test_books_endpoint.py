@@ -270,3 +270,58 @@ class TestUserRatedBooksEndpoint:
         assert "security" in get_op or any(
             "Authorization" in str(p) for p in get_op.get("parameters", [])
         ), "Endpoint should require authentication"
+
+
+# ---------------------------------------------------------------------------
+# Tests: GET /books/ with category filter
+# ---------------------------------------------------------------------------
+
+
+class TestBooksCategoryFilter:
+    """Tests for the category query parameter on /books/ endpoint."""
+
+    def test_books_category_fiction_accepted(self, client):
+        """GET /books/?category=fiction should be accepted."""
+        response = client.get("/books/", params={"category": "fiction"})
+        assert response.status_code == 200
+
+    def test_books_category_nonfiction_accepted(self, client):
+        """GET /books/?category=nonfiction should be accepted."""
+        response = client.get("/books/", params={"category": "nonfiction"})
+        assert response.status_code == 200
+
+    def test_books_no_category_accepted(self, client):
+        """GET /books/ without category parameter should work."""
+        response = client.get("/books/")
+        assert response.status_code == 200
+
+    def test_books_category_combined_with_genre_filter(self, client):
+        """category parameter should work with existing genre parameter."""
+        response = client.get(
+            "/books/", params={"category": "fiction", "genre": 1}
+        )
+        assert response.status_code == 200
+
+    def test_books_invalid_category_returns_422(self, client):
+        """Invalid category value should return 422."""
+        response = client.get("/books/", params={"category": "invalid"})
+        assert response.status_code == 422
+
+    def test_books_category_parameter_exists_in_openapi(self):
+        """The category parameter should be documented in OpenAPI schema."""
+        schema = app.openapi()
+        books_path = schema["paths"].get("/books/", {})
+        get_op = books_path.get("get", {})
+        parameters = get_op.get("parameters", [])
+        param_names = {p.get("name") for p in parameters}
+        assert "category" in param_names, (
+            "/books/ OpenAPI schema should include category parameter"
+        )
+
+    def test_read_books_function_has_category_parameter(self):
+        """The read_books function should accept a category parameter."""
+        sig = inspect.signature(read_books)
+        param_names = set(sig.parameters.keys())
+        assert "category" in param_names, (
+            "read_books should have a category parameter"
+        )

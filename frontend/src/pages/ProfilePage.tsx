@@ -2,7 +2,6 @@ import { useEffect } from "react";
 import { Link, useNavigate } from "react-router";
 import { useAuth } from "@/context/AuthContext";
 import { useUserProfile } from "@/hooks/useUserProfile";
-import { useRecommendations } from "@/hooks/useRecommendations";
 import { RecommendationGrid } from "@/components/RecommendationGrid";
 import { SkeletonGrid } from "@/components/Skeleton";
 
@@ -25,15 +24,6 @@ export function ProfilePage() {
   const { data: profile, isLoading: profileLoading } = useUserProfile(
     isAuthenticated
   );
-  const { data: fictionRecs, isLoading: fictionLoading } = useRecommendations({
-    category: "fiction",
-    enabled: isAuthenticated,
-  });
-  const { data: nonfictionRecs, isLoading: nonfictionLoading } =
-    useRecommendations({
-      category: "nonfiction",
-      enabled: isAuthenticated,
-    });
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
@@ -48,8 +38,6 @@ export function ProfilePage() {
   if (!isAuthenticated || !user) {
     return null;
   }
-
-  const isRecsLoading = fictionLoading || nonfictionLoading;
 
   if (profileLoading) {
     return <ProfileLoading />;
@@ -100,15 +88,7 @@ export function ProfilePage() {
 
       {/* Recommendations */}
       <section>
-        {fictionRecs && nonfictionRecs ? (
-          <RecommendationGrid
-            fictionData={fictionRecs}
-            nonfictionData={nonfictionRecs}
-            isLoading={isRecsLoading}
-          />
-        ) : isRecsLoading ? (
-          <SkeletonGrid count={8} />
-        ) : null}
+        <RecommendationGrid isAuthenticated={isAuthenticated} />
       </section>
     </div>
   );

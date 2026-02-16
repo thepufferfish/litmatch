@@ -1,8 +1,11 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { RecommendationGrid } from "./RecommendationGrid";
-import type { RecommendationResponse } from "@/types";
+import type { RecommendationResponse, GroupedGenres } from "@/types";
+import * as useGroupedGenresHook from "@/hooks/useGroupedGenres";
+import * as useRecommendationsHook from "@/hooks/useRecommendations";
 
 // -- Test data ---------------------------------------------------------------
 
@@ -65,37 +68,75 @@ const emptyResponse: RecommendationResponse = {
   },
 };
 
+const mockGroupedGenres: GroupedGenres = {
+  fiction: [{ id: 1, name: "Mystery" }],
+  nonfiction: [{ id: 2, name: "History" }],
+  unknown: [],
+};
+
 // -- Helpers -----------------------------------------------------------------
 
 function renderGrid(props?: {
   fiction?: RecommendationResponse;
   nonfiction?: RecommendationResponse;
-  isLoading?: boolean;
+  genresLoading?: boolean;
 }) {
   const {
     fiction = fictionBooks,
     nonfiction = nonfictionBooks,
-    isLoading = false,
+    genresLoading = false,
   } = props ?? {};
 
+  // Mock the hooks
+  vi.spyOn(useGroupedGenresHook, "useGroupedGenres").mockReturnValue({
+    data: genresLoading ? undefined : mockGroupedGenres,
+    isLoading: genresLoading,
+  } as ReturnType<typeof useGroupedGenresHook.useGroupedGenres>);
+
+  vi.spyOn(useRecommendationsHook, "useRecommendations").mockImplementation(
+    (params) => {
+      const category = params?.category ?? "all";
+      if (category === "fiction") {
+        return {
+          data: fiction,
+          isLoading: false,
+        } as ReturnType<typeof useRecommendationsHook.useRecommendations>;
+      }
+      return {
+        data: nonfiction,
+        isLoading: false,
+      } as ReturnType<typeof useRecommendationsHook.useRecommendations>;
+    }
+  );
+
+  const queryClient = new QueryClient({
+    defaultOptions: {
+      queries: { retry: false },
+    },
+  });
+
   return render(
-    <MemoryRouter>
-      <RecommendationGrid
-        fictionData={fiction}
-        nonfictionData={nonfiction}
-        isLoading={isLoading}
-      />
-    </MemoryRouter>
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter>
+        <RecommendationGrid isAuthenticated={true} />
+      </MemoryRouter>
+    </QueryClientProvider>
   );
 }
 
 // -- Tests -------------------------------------------------------------------
 
 describe("RecommendationGrid", () => {
-  it("renders fiction tab by default", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("renders fiction tab by default", async () => {
     renderGrid();
 
-    expect(screen.getByText("Fiction Book One")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText("Fiction Book One")).toBeInTheDocument();
+    });
     expect(screen.queryByText("Nonfiction Book One")).not.toBeInTheDocument();
   });
 
@@ -103,40 +144,54 @@ describe("RecommendationGrid", () => {
     const user = userEvent.setup();
     renderGrid();
 
+    await waitFor(() => {
+      expect(screen.getByText("Fiction Book One")).toBeInTheDocument();
+    });
+
     await user.click(screen.getByRole("tab", { name: /non-fiction/i }));
 
     expect(screen.getByText("Nonfiction Book One")).toBeInTheDocument();
     expect(screen.queryByText("Fiction Book One")).not.toBeInTheDocument();
   });
 
-  it("shows strategy label 'Based on your taste' for personalized", () => {
+  it("shows strategy label 'based on your taste' for personalized", async () => {
     renderGrid();
 
-    expect(screen.getByText("Based on your taste")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText(/based on your taste/i)).toBeInTheDocument();
+    });
   });
 
-  it("shows strategy label 'Popular picks' for popular", async () => {
+  it("shows strategy label 'popular picks' for popular", async () => {
     const user = userEvent.setup();
     renderGrid();
 
+    await waitFor(() => {
+      expect(screen.getByText("Fiction Book One")).toBeInTheDocument();
+    });
+
     await user.click(screen.getByRole("tab", { name: /non-fiction/i }));
 
-    expect(screen.getByText("Popular picks")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText(/popular picks/i)).toBeInTheDocument();
+    });
   });
 
-  it("shows loading skeleton when isLoading is true", () => {
-    const { container } = renderGrid({ isLoading: true });
+  it("shows loading skeleton when hooks are loading", () => {
+    const { container } = renderGrid({ genresLoading: true });
 
     const skeletons = container.querySelectorAll(".skeleton-shimmer");
     expect(skeletons.length).toBeGreaterThan(0);
   });
 
-  it("shows empty state when active tab has no items", () => {
+  it("shows empty state when active tab has no items", async () => {
     renderGrid({ fiction: emptyResponse });
 
-    expect(
-      screen.getByText("No fiction recommendations yet")
-    ).toBeInTheDocument();
+    await waitFor(() => {
+      expect(
+        screen.getByText(/no.*fiction recommendations yet/i)
+      ).toBeInTheDocument();
+    });
   });
 
   it("shows nonfiction empty state", async () => {
@@ -148,19 +203,27 @@ describe("RecommendationGrid", () => {
       },
     });
 
+    await waitFor(() => {
+      expect(screen.getByText("Fiction Book One")).toBeInTheDocument();
+    });
+
     await user.click(screen.getByRole("tab", { name: /non-fiction/i }));
 
-    expect(
-      screen.getByText("No non-fiction recommendations yet")
-    ).toBeInTheDocument();
+    await waitFor(() => {
+      expect(
+        screen.getByText(/no.*non-fiction recommendations yet/i)
+      ).toBeInTheDocument();
+    });
   });
 
-  it("renders book cards within the active tab", () => {
+  it("renders book cards within the active tab", async () => {
     renderGrid();
 
-    const links = screen.getAllByRole("link");
-    expect(links.some((link) => link.getAttribute("href") === "/books/1")).toBe(
-      true
-    );
+    await waitFor(() => {
+      const links = screen.getAllByRole("link");
+      expect(
+        links.some((link) => link.getAttribute("href") === "/books/1")
+      ).toBe(true);
+    });
   });
 });

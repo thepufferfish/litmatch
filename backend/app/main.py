@@ -39,8 +39,11 @@ from backend.db.models import (
     Author,
     AuthResponse,
     Book,
+    BookGenreLink,
     BookRead,
     Genre,
+    GenreSimple,
+    GroupedGenresResponse,
     PaginatedResponse,
     RatingCreate,
     RecommendationMeta,
@@ -311,6 +314,10 @@ def logout(request: Request, response: Response, *, session: Session = Depends(g
 # Book endpoints
 # ---------------------------------------------------------------------------
 
+# Type alias for /books/ endpoint (fiction/nonfiction only, no "all")
+BooksCategoryFilter = Literal["fiction", "nonfiction"]
+
+
 @app.get("/books/", response_model=PaginatedResponse[BookRead])
 def read_books(
     *,
@@ -318,6 +325,7 @@ def read_books(
     page: int = Query(default=1, ge=1),
     limit: int = Query(default=24, ge=1, le=100),
     genre: int | None = None,
+    category: BooksCategoryFilter | None = None,
     sort: SortOption | None = Query(default=None),
 ):
     rating_sub = _build_rating_subquery()
@@ -332,9 +340,19 @@ def read_books(
         .outerjoin(rating_sub, Book.id == rating_sub.c.book_id)
     )
     count_stmt = select(func.count(Book.id))
+
+    # Apply genre filter
     if genre:
         stmt = stmt.join(Book.genres).where(Genre.id == genre)
         count_stmt = count_stmt.join(Book.genres).where(Genre.id == genre)
+
+    # Apply category filter
+    if category == "fiction":
+        stmt = stmt.where(Book.is_fiction == True)  # noqa: E712
+        count_stmt = count_stmt.where(Book.is_fiction == True)  # noqa: E712
+    elif category == "nonfiction":
+        stmt = stmt.where(Book.is_fiction == False)  # noqa: E712
+        count_stmt = count_stmt.where(Book.is_fiction == False)  # noqa: E712
 
     stmt = _apply_sort(stmt, sort, rating_sub)
 
@@ -445,6 +463,68 @@ def read_genres(*, session: Session = Depends(get_session)):
     return genres
 
 
+EXCLUDED_GENRE_NAMES = {"Fiction", "Non-Fiction"}
+
+
+@app.get("/genres/grouped", response_model=GroupedGenresResponse)
+@limiter.limit("60/minute")
+def read_grouped_genres(
+    request: Request,
+    *,
+    session: Session = Depends(get_session),
+):
+    """Return genres grouped by fiction/nonfiction/unknown categories.
+
+    Groups genres based on the is_fiction flag of books associated with each genre:
+    - Fiction: Genres where majority of books have is_fiction=True
+    - Nonfiction: Genres where majority of books have is_fiction=False
+    - Unknown: Genres with no books
+
+    The "Fiction" and "Non-Fiction" genres themselves are excluded from results.
+    When fiction and nonfiction counts are tied, the genre is assigned to fiction.
+
+    Uses a single aggregation query to avoid N+1 query issues.
+    """
+    stmt = (
+        select(
+            Genre.id,
+            Genre.name,
+            func.coalesce(
+                func.sum(case((Book.is_fiction == True, 1), else_=0)),  # noqa: E712
+                0,
+            ).label("fiction_count"),
+            func.coalesce(
+                func.sum(case((Book.is_fiction == False, 1), else_=0)),  # noqa: E712
+                0,
+            ).label("nonfiction_count"),
+        )
+        .outerjoin(BookGenreLink, Genre.id == BookGenreLink.genre_id)
+        .outerjoin(Book, BookGenreLink.book_id == Book.id)
+        .where(Genre.name.notin_(EXCLUDED_GENRE_NAMES))
+        .group_by(Genre.id, Genre.name)
+    )
+    rows = session.exec(stmt).all()
+
+    fiction_list: list[GenreSimple] = []
+    nonfiction_list: list[GenreSimple] = []
+    unknown_list: list[GenreSimple] = []
+
+    for row in rows:
+        genre_simple = GenreSimple(id=row.id, name=row.name)
+        if row.fiction_count == 0 and row.nonfiction_count == 0:
+            unknown_list.append(genre_simple)
+        elif row.fiction_count >= row.nonfiction_count:
+            fiction_list.append(genre_simple)
+        else:
+            nonfiction_list.append(genre_simple)
+
+    return GroupedGenresResponse(
+        fiction=fiction_list,
+        nonfiction=nonfiction_list,
+        unknown=unknown_list,
+    )
+
+
 # ---------------------------------------------------------------------------
 # User Profile
 # ---------------------------------------------------------------------------
@@ -522,6 +602,7 @@ def get_recommendations(
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user),
     category: CategoryFilter = Query(default="all"),
+    genre_id: int | None = Query(default=None, ge=1),
     limit: int = Query(default=20, ge=1, le=100),
 ):
     """Return personalized or popular book recommendations.
@@ -529,7 +610,16 @@ def get_recommendations(
     Users with fewer than 5 ratings receive popular books (fallback).
     Users with 5+ ratings receive personalized nearest-neighbor results
     based on their taste embedding.
+
+    Optional genre_id filter returns only books that belong to the specified
+    genre. The filter is applied at the database query level to respect the
+    limit parameter.
     """
+    if genre_id is not None:
+        genre = session.get(Genre, genre_id)
+        if genre is None:
+            raise HTTPException(status_code=404, detail="Genre not found")
+
     rated_stmt = select(UserRating.book_id).where(
         UserRating.user_id == current_user.id
     )
@@ -554,16 +644,19 @@ def get_recommendations(
         )
         if user_embedding is not None:
             books = find_nearest_books(
-                session, user_embedding, rated_book_ids, category, limit
+                session, user_embedding, rated_book_ids, category, limit,
+                genre_id=genre_id,
             )
             strategy = "personalized"
         else:
             books = get_popular_books(
-                session, rated_book_ids, category, limit
+                session, rated_book_ids, category, limit,
+                genre_id=genre_id,
             )
     else:
         books = get_popular_books(
-            session, rated_book_ids, category, limit
+            session, rated_book_ids, category, limit,
+            genre_id=genre_id,
         )
 
     items = _annotate_books_with_ratings(session, books)

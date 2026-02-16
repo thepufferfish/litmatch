@@ -1,13 +1,32 @@
+import { useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router";
-import { useGenres } from "@/hooks/useGenres";
+import { useGroupedGenres } from "@/hooks/useGroupedGenres";
 import { slugify } from "@/utils/slugify";
+import type { Genre } from "@/types";
+
+function sortGenres(genres: Genre[]): Genre[] {
+  return [...genres].sort((a, b) => a.name.localeCompare(b.name));
+}
 
 interface GenreSidebarProps {
   activeGenreSlug?: string;
+  activeCategory?: "fiction" | "nonfiction";
 }
 
-export function GenreSidebar({ activeGenreSlug }: GenreSidebarProps) {
-  const { data: genres, isLoading } = useGenres();
+export function GenreSidebar({ activeGenreSlug, activeCategory }: GenreSidebarProps) {
+  const { data: groupedGenres, isLoading, isError } = useGroupedGenres();
+  const [expandedSection, setExpandedSection] = useState<"fiction" | "nonfiction" | null>(
+    activeCategory ?? "fiction"
+  );
+
+  const fictionGenres = useMemo(
+    () => sortGenres(groupedGenres?.fiction ?? []),
+    [groupedGenres]
+  );
+  const nonfictionGenres = useMemo(
+    () => sortGenres(groupedGenres?.nonfiction ?? []),
+    [groupedGenres]
+  );
 
   if (isLoading) {
     return (
@@ -29,11 +48,26 @@ export function GenreSidebar({ activeGenreSlug }: GenreSidebarProps) {
     );
   }
 
-  if (!genres?.length) return null;
+  if (isError) {
+    return (
+      <aside className="hidden lg:block w-56 shrink-0">
+        <div className="sticky top-24 px-3 py-4 text-sm text-red-600">
+          Failed to load genres. Please try again.
+        </div>
+      </aside>
+    );
+  }
 
-  const sortedGenres = [...genres].sort((a, b) =>
-    a.name.localeCompare(b.name)
-  );
+  if (!groupedGenres) return null;
+
+  // Return null if no genres at all
+  if (fictionGenres.length === 0 && nonfictionGenres.length === 0) {
+    return null;
+  }
+
+  const toggleSection = (section: "fiction" | "nonfiction") => {
+    setExpandedSection(expandedSection === section ? null : section);
+  };
 
   return (
     <>
@@ -54,23 +88,90 @@ export function GenreSidebar({ activeGenreSlug }: GenreSidebarProps) {
                 All Books
               </Link>
             </li>
-            {sortedGenres.map((genre) => {
-              const slug = slugify(genre.name);
-              return (
-                <li key={genre.id}>
-                  <Link
-                    to={`/genre/${slug}`}
-                    className={`block px-3 py-2 rounded-lg text-sm transition-colors ${
-                      activeGenreSlug === slug
-                        ? "bg-leather text-white font-medium"
-                        : "text-ink-light hover:bg-parchment"
-                    }`}
-                  >
-                    {genre.name}
-                  </Link>
-                </li>
-              );
-            })}
+
+            {/* Fiction section */}
+            <li className="mt-4">
+              <button
+                onClick={() => toggleSection("fiction")}
+                className="w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm font-medium text-ink hover:bg-parchment transition-colors cursor-pointer"
+              >
+                <span>Fiction</span>
+                <svg
+                  className={`w-4 h-4 transition-transform ${
+                    expandedSection === "fiction" ? "rotate-180" : ""
+                  }`}
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  strokeWidth={2}
+                  stroke="currentColor"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
+                </svg>
+              </button>
+              {expandedSection === "fiction" && (
+                <ul className="mt-1 ml-3 space-y-0.5">
+                  {fictionGenres.map((genre) => {
+                    const slug = slugify(genre.name);
+                    return (
+                      <li key={genre.id}>
+                        <Link
+                          to={`/genre/${slug}?category=fiction`}
+                          className={`block px-3 py-2 rounded-lg text-sm transition-colors ${
+                            activeGenreSlug === slug && activeCategory === "fiction"
+                              ? "bg-leather text-white font-medium"
+                              : "text-ink-light hover:bg-parchment"
+                          }`}
+                        >
+                          {genre.name}
+                        </Link>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </li>
+
+            {/* Non-Fiction section */}
+            <li className="mt-2">
+              <button
+                onClick={() => toggleSection("nonfiction")}
+                className="w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm font-medium text-ink hover:bg-parchment transition-colors cursor-pointer"
+              >
+                <span>Non-Fiction</span>
+                <svg
+                  className={`w-4 h-4 transition-transform ${
+                    expandedSection === "nonfiction" ? "rotate-180" : ""
+                  }`}
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  strokeWidth={2}
+                  stroke="currentColor"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
+                </svg>
+              </button>
+              {expandedSection === "nonfiction" && (
+                <ul className="mt-1 ml-3 space-y-0.5">
+                  {nonfictionGenres.map((genre) => {
+                    const slug = slugify(genre.name);
+                    return (
+                      <li key={genre.id}>
+                        <Link
+                          to={`/genre/${slug}?category=nonfiction`}
+                          className={`block px-3 py-2 rounded-lg text-sm transition-colors ${
+                            activeGenreSlug === slug && activeCategory === "nonfiction"
+                              ? "bg-leather text-white font-medium"
+                              : "text-ink-light hover:bg-parchment"
+                          }`}
+                        >
+                          {genre.name}
+                        </Link>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </li>
           </ul>
         </nav>
       </aside>
@@ -87,14 +188,30 @@ export function GenreSidebar({ activeGenreSlug }: GenreSidebarProps) {
         >
           All
         </Link>
-        {sortedGenres.map((genre) => {
+        {fictionGenres.map((genre) => {
           const slug = slugify(genre.name);
           return (
             <Link
               key={genre.id}
-              to={`/genre/${slug}`}
+              to={`/genre/${slug}?category=fiction`}
               className={`shrink-0 px-4 py-1.5 rounded-full text-sm transition-colors ${
-                activeGenreSlug === slug
+                activeGenreSlug === slug && activeCategory === "fiction"
+                  ? "bg-leather text-white font-medium"
+                  : "bg-parchment text-ink-light hover:bg-parchment-dark"
+              }`}
+            >
+              {genre.name}
+            </Link>
+          );
+        })}
+        {nonfictionGenres.map((genre) => {
+          const slug = slugify(genre.name);
+          return (
+            <Link
+              key={genre.id}
+              to={`/genre/${slug}?category=nonfiction`}
+              className={`shrink-0 px-4 py-1.5 rounded-full text-sm transition-colors ${
+                activeGenreSlug === slug && activeCategory === "nonfiction"
                   ? "bg-leather text-white font-medium"
                   : "bg-parchment text-ink-light hover:bg-parchment-dark"
               }`}
@@ -108,8 +225,9 @@ export function GenreSidebar({ activeGenreSlug }: GenreSidebarProps) {
       {/* Mobile: dropdown select */}
       <div className="md:hidden mb-4">
         <MobileGenreSelect
-          genres={sortedGenres}
+          groupedGenres={groupedGenres}
           activeGenreSlug={activeGenreSlug}
+          activeCategory={activeCategory}
         />
       </div>
     </>
@@ -117,11 +235,13 @@ export function GenreSidebar({ activeGenreSlug }: GenreSidebarProps) {
 }
 
 function MobileGenreSelect({
-  genres,
+  groupedGenres,
   activeGenreSlug,
+  activeCategory,
 }: {
-  genres: { id: number; name: string }[];
+  groupedGenres: { fiction: Genre[]; nonfiction: Genre[]; unknown: Genre[] };
   activeGenreSlug?: string;
+  activeCategory?: "fiction" | "nonfiction";
 }) {
   const navigate = useNavigate();
 
@@ -130,22 +250,50 @@ function MobileGenreSelect({
     if (val === "") {
       navigate("/");
     } else {
-      navigate(`/genre/${val}`);
+      navigate(val);
     }
   };
 
+  const currentValue = activeGenreSlug
+    ? `/genre/${activeGenreSlug}?category=${activeCategory ?? "fiction"}`
+    : "";
+
+  const fictionGenres = useMemo(
+    () => sortGenres(groupedGenres.fiction),
+    [groupedGenres.fiction]
+  );
+  const nonfictionGenres = useMemo(
+    () => sortGenres(groupedGenres.nonfiction),
+    [groupedGenres.nonfiction]
+  );
+
   return (
     <select
-      value={activeGenreSlug ?? ""}
+      value={currentValue}
       onChange={handleChange}
       className="w-full px-4 py-2.5 rounded-xl border border-parchment-dark bg-white text-ink text-sm focus:outline-none focus:ring-2 focus:ring-leather/30 focus:border-leather cursor-pointer"
     >
       <option value="">All Genres</option>
-      {genres.map((genre) => (
-        <option key={genre.id} value={slugify(genre.name)}>
-          {genre.name}
-        </option>
-      ))}
+      <optgroup label="Fiction">
+        {fictionGenres.map((genre) => (
+          <option
+            key={genre.id}
+            value={`/genre/${slugify(genre.name)}?category=fiction`}
+          >
+            {genre.name}
+          </option>
+        ))}
+      </optgroup>
+      <optgroup label="Non-Fiction">
+        {nonfictionGenres.map((genre) => (
+          <option
+            key={genre.id}
+            value={`/genre/${slugify(genre.name)}?category=nonfiction`}
+          >
+            {genre.name}
+          </option>
+        ))}
+      </optgroup>
     </select>
   );
 }

@@ -13,6 +13,12 @@ export interface Genre {
   name: string;
 }
 
+export interface GroupedGenres {
+  fiction: Genre[];
+  nonfiction: Genre[];
+  unknown: Genre[];
+}
+
 export interface Critic {
   id: number;
   name: string;

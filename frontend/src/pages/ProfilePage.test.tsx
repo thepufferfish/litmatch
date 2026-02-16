@@ -9,6 +9,7 @@ import type { Book, RecommendationResponse, UserProfile } from "@/types";
 const mockUseAuth = vi.fn();
 const mockUseUserProfile = vi.fn();
 const mockUseRecommendations = vi.fn();
+const mockUseGroupedGenres = vi.fn();
 
 vi.mock("@/context/AuthContext", () => ({
   useAuth: () => mockUseAuth(),
@@ -20,6 +21,10 @@ vi.mock("@/hooks/useUserProfile", () => ({
 
 vi.mock("@/hooks/useRecommendations", () => ({
   useRecommendations: (...args: unknown[]) => mockUseRecommendations(...args),
+}));
+
+vi.mock("@/hooks/useGroupedGenres", () => ({
+  useGroupedGenres: () => mockUseGroupedGenres(),
 }));
 
 // -- Test data ---------------------------------------------------------------
@@ -100,6 +105,15 @@ function setupAuthenticatedMocks(overrides?: {
 
   mockUseUserProfile.mockReturnValue({
     data: { ...mockProfile, rating_count: ratingCount },
+    isLoading: false,
+  });
+
+  mockUseGroupedGenres.mockReturnValue({
+    data: {
+      fiction: [{ id: 1, name: "Mystery" }],
+      nonfiction: [{ id: 2, name: "History" }],
+      unknown: [],
+    },
     isLoading: false,
   });
 
