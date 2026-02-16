@@ -75,11 +75,6 @@ SortOption = Literal[
 ]
 
 
-def _build_rating_subquery():
-    """Build a subquery that computes avg rating and review count per book."""
-    return build_rating_subquery()
-
-
 def _apply_sort(stmt: expression.Select, sort: SortOption | None, rating_sub) -> expression.Select:
     """Apply an ORDER BY clause to the statement based on the sort option."""
     sort_map = {
@@ -330,7 +325,7 @@ def read_books(
     category: BooksCategoryFilter | None = None,
     sort: SortOption | None = Query(default=None),
 ):
-    rating_sub = _build_rating_subquery()
+    rating_sub = build_rating_subquery()
 
     stmt = (
         select(Book)
@@ -393,7 +388,7 @@ def search_books(
         else_=3,
     )
 
-    rating_sub = _build_rating_subquery()
+    rating_sub = build_rating_subquery()
 
     stmt = (
         select(Book)
@@ -570,7 +565,7 @@ def get_user_rated_books(
     sort: SortOption | None = Query(default=None),
 ):
     """Return books rated by the authenticated user with pagination and sorting."""
-    rating_sub = _build_rating_subquery()
+    rating_sub = build_rating_subquery()
 
     stmt = (
         select(Book)
@@ -822,7 +817,7 @@ def get_user_list_books(
     sort: SortOption | None = Query(default=None),
 ):
     """Return books on the authenticated user's list with pagination and sorting."""
-    rating_sub = _build_rating_subquery()
+    rating_sub = build_rating_subquery()
 
     stmt = (
         select(Book)

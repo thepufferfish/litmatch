@@ -32,7 +32,6 @@ CONCURRENT_REQUESTS = 1
 DOWNLOAD_DELAY = 10
 # The download delay setting will honor only one of:
 CONCURRENT_REQUESTS_PER_DOMAIN = 1
-#CONCURRENT_REQUESTS_PER_IP = 16
 
 # Disable cookies (enabled by default)
 #COOKIES_ENABLED = False
@@ -106,18 +105,6 @@ ITEM_PIPELINES = {
 REQUEST_FINGERPRINTER_IMPLEMENTATION = "2.7"
 TWISTED_REACTOR = "twisted.internet.asyncioreactor.AsyncioSelectorReactor"
 FEED_EXPORT_ENCODING = "utf-8"
-# FEEDS = {
-#     "output/books.jsonl": {
-#         'format': 'jsonl',
-#         'store_empty': False,
-#         'fields': None,
-#         'indent': 4,
-#         'item_export_kwargs': {
-#            'export_empty_fields': True,
-#         },
-#         "overwrite": False
-#     }
-# }
 
 LOG_APPEND = False
 LOG_LEVEL = "INFO"

@@ -258,11 +258,6 @@ class RecommendationMeta(BaseModel):
     category: Literal["fiction", "nonfiction", "all"]
 
 
-class RecommendationResponse(BaseModel):
-    items: list[BookRead]
-    meta: RecommendationMeta
-
-
 class PaginatedRecommendationResponse(BaseModel):
     items: list[BookRead]
     meta: RecommendationMeta

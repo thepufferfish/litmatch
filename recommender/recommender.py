@@ -4,7 +4,6 @@ from surprise.model_selection import train_test_split
 from surprise import accuracy
 
 
-
 # Recommend top-N books for a given user
 def get_top_n_recommendations(user_id, df, model, n=5):
     all_books = df['book_url'].unique()
