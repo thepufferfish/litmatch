@@ -35,8 +35,8 @@ from backend.db.models import (
     Author,
     Book,
     BookRead,
+    PaginatedRecommendationResponse,
     RecommendationMeta,
-    RecommendationResponse,
     Review,
     UserProfile,
     UserRating,
@@ -71,15 +71,18 @@ class TestResponseModels:
         assert profile.username == "alice"
         assert profile.rating_count == 7
 
-    def test_recommendation_response_with_empty_items(self):
+    def test_paginated_response_with_empty_items(self):
         meta = RecommendationMeta(
             strategy="popular", rating_count=0, category="all"
         )
-        resp = RecommendationResponse(items=[], meta=meta)
+        resp = PaginatedRecommendationResponse(
+            items=[], meta=meta, total=0, offset=0, limit=20, has_more=False,
+        )
         assert resp.items == []
         assert resp.meta.strategy == "popular"
+        assert resp.has_more is False
 
-    def test_recommendation_response_with_book_items(self):
+    def test_paginated_response_with_book_items(self):
         book = BookRead(
             id=1,
             title="Test Book",
@@ -93,9 +96,12 @@ class TestResponseModels:
         meta = RecommendationMeta(
             strategy="personalized", rating_count=10, category="all"
         )
-        resp = RecommendationResponse(items=[book], meta=meta)
+        resp = PaginatedRecommendationResponse(
+            items=[book], meta=meta, total=1, offset=0, limit=20, has_more=False,
+        )
         assert len(resp.items) == 1
         assert resp.items[0].title == "Test Book"
+        assert resp.total == 1
 
 
 # -----------------------------------------------------------------------
@@ -281,24 +287,29 @@ class TestComputeUserEmbedding:
 
 
 class TestFindNearestBooks:
-    def test_returns_book_list(self):
+    def test_returns_book_list_and_total(self):
         mock_book = MagicMock(spec=Book)
         mock_session = MagicMock(spec=Session)
+        # First exec call (count) returns total, second (fetch) returns books
+        mock_session.exec.return_value.one.return_value = 1
         mock_session.exec.return_value.all.return_value = [mock_book]
 
-        result = find_nearest_books(
+        books, total = find_nearest_books(
             mock_session, [0.1, 0.2, 0.3], set(), "all", 10
         )
-        assert len(result) == 1
+        assert len(books) == 1
+        assert total == 1
 
-    def test_returns_empty_list(self):
+    def test_returns_empty_list_and_zero_total(self):
         mock_session = MagicMock(spec=Session)
+        mock_session.exec.return_value.one.return_value = 0
         mock_session.exec.return_value.all.return_value = []
 
-        result = find_nearest_books(
+        books, total = find_nearest_books(
             mock_session, [0.1, 0.2, 0.3], set(), "all", 10
         )
-        assert result == []
+        assert books == []
+        assert total == 0
 
 
 # -----------------------------------------------------------------------
@@ -527,7 +538,7 @@ class TestRecommendationsEndpoint:
 
         # find_nearest_books is called within the request session context,
         # so query the book from the active session to avoid DetachedInstanceError.
-        def side_effect(session, user_embedding, exclude_ids, category, limit):
+        def side_effect(session, user_embedding, exclude_ids, category, limit, **kwargs):
             book = session.exec(
                 select(Book)
                 .options(
@@ -537,7 +548,8 @@ class TestRecommendationsEndpoint:
                 )
                 .where(Book.id == rec_book_id)
             ).first()
-            return [book] if book else []
+            books = [book] if book else []
+            return books, len(books)
 
         mock_find.side_effect = side_effect
 
@@ -644,7 +656,7 @@ class TestRecommendationsEndpoint:
         assert len(response.json()["items"]) <= 3
 
     def test_response_shape(self, client: TestClient, setup_db):
-        """Verify the response has the expected structure."""
+        """Verify the response has the expected structure with pagination fields."""
         reg = _register_user(client)
         token = reg.json()["access_token"]
 
@@ -660,6 +672,11 @@ class TestRecommendationsEndpoint:
         assert "rating_count" in data["meta"]
         assert "category" in data["meta"]
         assert isinstance(data["items"], list)
+        # Pagination fields
+        assert "total" in data
+        assert "offset" in data
+        assert "limit" in data
+        assert "has_more" in data
 
     def test_fiction_filter_returns_only_fiction(self, client: TestClient, setup_db):
         """Fiction category filter excludes nonfiction books."""
@@ -706,7 +723,7 @@ class TestRecommendationsEndpoint:
             )
 
         mock_compute.return_value = [0.1] * 384
-        mock_find.return_value = []
+        mock_find.return_value = ([], 0)
 
         client.get(
             "/recommendations/?category=fiction",
@@ -751,7 +768,7 @@ class TestRecommendationsEndpoint:
             )
 
         mock_compute.return_value = [0.1] * 384
-        mock_find.return_value = []
+        mock_find.return_value = ([], 0)
 
         # Request fiction: only 3 fiction ratings, should get popular fallback
         response = client.get(
@@ -796,7 +813,7 @@ class TestRecommendationsEndpoint:
             )
 
         mock_compute.return_value = [0.1] * 384
-        mock_find.return_value = []
+        mock_find.return_value = ([], 0)
 
         response = client.get(
             "/recommendations/?category=all",

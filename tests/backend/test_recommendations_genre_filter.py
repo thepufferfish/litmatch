@@ -154,21 +154,21 @@ class TestRecommendationsGenreParameter:
 
     def test_recommendations_accepts_genre_id_parameter(self, client):
         """GET /recommendations/?genre_id=1 should be accepted."""
-        with patch("backend.app.main.get_popular_books", return_value=[]), \
+        with patch("backend.app.main.get_popular_books", return_value=([], 0)), \
              patch("backend.app.main._annotate_books_with_ratings", return_value=[]):
             response = client.get("/recommendations/", params={"genre_id": 1})
             assert response.status_code == 200
 
     def test_recommendations_without_genre_id_works(self, client):
         """GET /recommendations/ without genre_id should work (backward compatible)."""
-        with patch("backend.app.main.get_popular_books", return_value=[]), \
+        with patch("backend.app.main.get_popular_books", return_value=([], 0)), \
              patch("backend.app.main._annotate_books_with_ratings", return_value=[]):
             response = client.get("/recommendations/")
             assert response.status_code == 200
 
     def test_recommendations_genre_id_none_accepted(self, client):
         """genre_id omitted should work (backward compatible)."""
-        with patch("backend.app.main.get_popular_books", return_value=[]), \
+        with patch("backend.app.main.get_popular_books", return_value=([], 0)), \
              patch("backend.app.main._annotate_books_with_ratings", return_value=[]):
             response = client.get("/recommendations/")
             assert response.status_code == 200
@@ -206,7 +206,7 @@ class TestRecommendationsGenreFiltering:
     ):
         """Personalized recommendations should pass genre_id to find_nearest_books."""
         mock_compute_embedding.return_value = [0.1] * 384
-        mock_find_nearest.return_value = [mock_books_with_genres[0]]
+        mock_find_nearest.return_value = ([mock_books_with_genres[0]], 1)
         mock_annotate.return_value = []
 
         def _override_get_session():
@@ -237,7 +237,7 @@ class TestRecommendationsGenreFiltering:
         mock_books_with_genres,
     ):
         """Popular (fallback) recommendations should pass genre_id to get_popular_books."""
-        mock_get_popular.return_value = [mock_books_with_genres[1]]
+        mock_get_popular.return_value = ([mock_books_with_genres[1]], 1)
         mock_annotate.return_value = []
 
         def _override_get_session():
@@ -269,7 +269,7 @@ class TestRecommendationsGenreFiltering:
     ):
         """Without genre_id, None should be passed to recommendation functions."""
         mock_compute_embedding.return_value = [0.1] * 384
-        mock_find_nearest.return_value = mock_books_with_genres
+        mock_find_nearest.return_value = (mock_books_with_genres, 3)
         mock_annotate.return_value = []
 
         def _override_get_session():
@@ -321,7 +321,7 @@ class TestRecommendationsGenreFiltering:
     ):
         """genre_id should work together with category parameter."""
         mock_compute_embedding.return_value = [0.1] * 384
-        mock_find_nearest.return_value = [mock_books_with_genres[0]]
+        mock_find_nearest.return_value = ([mock_books_with_genres[0]], 1)
         mock_annotate.return_value = []
 
         def _override_get_session():

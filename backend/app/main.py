@@ -45,10 +45,10 @@ from backend.db.models import (
     GenreSimple,
     GroupedGenresResponse,
     ListAddRequest,
+    PaginatedRecommendationResponse,
     PaginatedResponse,
     RatingCreate,
     RecommendationMeta,
-    RecommendationResponse,
     Review,
     ReviewRead,
     User,
@@ -602,7 +602,10 @@ def get_user_rated_books(
 # Recommendations
 # ---------------------------------------------------------------------------
 
-@app.get("/recommendations/", response_model=RecommendationResponse)
+MAX_RECOMMENDATIONS = 100
+
+
+@app.get("/recommendations/", response_model=PaginatedRecommendationResponse)
 @limiter.limit("15/minute")
 def get_recommendations(
     request: Request,
@@ -612,6 +615,7 @@ def get_recommendations(
     category: CategoryFilter = Query(default="all"),
     genre_id: int | None = Query(default=None, ge=1),
     limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0, le=MAX_RECOMMENDATIONS),
 ):
     """Return personalized or popular book recommendations.
 
@@ -619,10 +623,30 @@ def get_recommendations(
     Users with 5+ ratings receive personalized nearest-neighbor results
     based on their taste embedding.
 
+    Results are capped at 100 total items. The offset parameter controls
+    pagination and has_more indicates whether additional pages exist.
+
     Optional genre_id filter returns only books that belong to the specified
     genre. The filter is applied at the database query level to respect the
     limit parameter.
     """
+    # Enforce hard cap of MAX_RECOMMENDATIONS total results
+    effective_limit = min(limit, MAX_RECOMMENDATIONS - offset)
+
+    if effective_limit <= 0:
+        return PaginatedRecommendationResponse(
+            items=[],
+            meta=RecommendationMeta(
+                strategy="popular",
+                rating_count=0,
+                category=category,
+            ),
+            total=0,
+            offset=offset,
+            limit=limit,
+            has_more=False,
+        )
+
     if genre_id is not None:
         genre = session.get(Genre, genre_id)
         if genre is None:
@@ -645,37 +669,51 @@ def get_recommendations(
 
     strategy: Literal["personalized", "popular"] = "popular"
     books: list[Book] = []
+    total = 0
 
     if rating_count >= MIN_RATINGS:
         user_embedding = compute_user_embedding(
             session, current_user.id, category
         )
         if user_embedding is not None:
-            books = find_nearest_books(
-                session, user_embedding, rated_book_ids, category, limit,
+            books, total = find_nearest_books(
+                session, user_embedding, rated_book_ids, category,
+                effective_limit,
                 genre_id=genre_id,
+                offset=offset,
             )
             strategy = "personalized"
         else:
-            books = get_popular_books(
-                session, rated_book_ids, category, limit,
+            books, total = get_popular_books(
+                session, rated_book_ids, category, effective_limit,
                 genre_id=genre_id,
+                offset=offset,
             )
     else:
-        books = get_popular_books(
-            session, rated_book_ids, category, limit,
+        books, total = get_popular_books(
+            session, rated_book_ids, category, effective_limit,
             genre_id=genre_id,
+            offset=offset,
         )
 
     items = _annotate_books_with_ratings(session, books)
 
-    return RecommendationResponse(
+    # has_more is true when there are more results beyond this page
+    # AND we haven't hit the hard cap
+    next_offset = offset + effective_limit
+    has_more = next_offset < total and next_offset < MAX_RECOMMENDATIONS
+
+    return PaginatedRecommendationResponse(
         items=items,
         meta=RecommendationMeta(
             strategy=strategy,
             rating_count=rating_count,
             category=category,
         ),
+        total=total,
+        offset=offset,
+        limit=effective_limit,
+        has_more=has_more,
     )
 
 
