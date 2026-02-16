@@ -32,7 +32,7 @@ export function StarRating({ value, onChange, disabled = false, size = "md" }: S
   const displayValue = hoverValue > 0 ? hoverValue : value;
 
   return (
-    <div className="flex gap-1.5 sm:gap-2" role="group" aria-label="Star rating">
+    <div className="flex gap-2 sm:gap-3" role="group" aria-label="Star rating">
       {[1, 2, 3, 4, 5].map((star) => {
         const filled = star <= displayValue;
 
@@ -55,7 +55,7 @@ export function StarRating({ value, onChange, disabled = false, size = "md" }: S
             data-testid={`star-${star}`}
             data-filled={String(filled)}
             aria-label={star === value ? "Clear rating" : `Rate ${star} star${star > 1 ? "s" : ""}`}
-            className="cursor-pointer transition-transform hover:scale-110 active:scale-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-leather rounded p-1"
+            className="cursor-pointer transition-transform hover:scale-110 active:scale-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-leather rounded min-w-[44px] min-h-[44px] flex items-center justify-center p-2"
             onClick={() => onChange(star === value ? null : star)}
             onPointerEnter={() => setHoverValue(star)}
             onPointerLeave={() => setHoverValue(0)}

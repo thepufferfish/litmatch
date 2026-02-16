@@ -29,23 +29,16 @@ export function InlineRating({
   if (!isAuthenticated) {
     return (
       <div onClick={handleContainerClick} className="mt-2 px-1">
-        <span
-          role="link"
-          tabIndex={0}
+        <button
+          type="button"
           className="text-xs text-muted hover:text-leather transition-colors cursor-pointer"
           onClick={(e) => {
             e.stopPropagation();
             void navigate("/login");
           }}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              e.stopPropagation();
-              void navigate("/login");
-            }
-          }}
         >
           Log in to rate
-        </span>
+        </button>
       </div>
     );
   }
