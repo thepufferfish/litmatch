@@ -65,16 +65,18 @@ export function BookCard({
 
         {/* Description overlay on hover */}
         {book.description && (
-          <div className="absolute inset-0 bg-white/85 opacity-0 group-hover:opacity-100 transition-opacity duration-300 p-4 overflow-y-auto">
+          <div className="absolute inset-0 bg-white/85 opacity-0 group-hover:opacity-100 transition-opacity duration-300 p-4 pr-12 overflow-y-auto pointer-events-none">
             <p className="text-sm text-ink leading-relaxed line-clamp-[12]">
               {book.description}
             </p>
           </div>
         )}
 
-        {/* List toggle button */}
+        {/* List toggle button — above overlay, visible on hover or when on list */}
         {isAuthenticated !== undefined && onAddToList && onRemoveFromList && (
-          <div className="absolute top-2 right-2 z-10">
+          <div className={`absolute top-2 right-2 z-20 transition-opacity duration-300 ${
+            isOnList ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+          }`}>
             <ListToggleButton
               bookId={book.id}
               isOnList={isOnList ?? false}
