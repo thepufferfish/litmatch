@@ -39,7 +39,7 @@ export function ListToggleButton({
     <button
       type="button"
       onClick={handleClick}
-      className="p-1.5 rounded-full bg-white/80 backdrop-blur-sm shadow-sm cursor-pointer transition-all hover:bg-white hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-leather"
+      className="p-2.5 rounded-full bg-white/80 backdrop-blur-sm shadow-sm cursor-pointer transition-all hover:bg-white hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-leather"
       aria-label={label}
       title={label}
     >

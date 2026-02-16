@@ -33,7 +33,7 @@ export function GenreSidebar({ activeGenreSlug, activeCategory }: GenreSidebarPr
       <>
         {/* Desktop skeleton */}
         <aside className="hidden lg:block w-56 shrink-0">
-          <div className="sticky top-24 space-y-1">
+          <div className="sticky top-[68px] space-y-1">
             <div className="h-5 skeleton-shimmer rounded w-20 mb-3" />
             {Array.from({ length: 8 }).map((_, i) => (
               <div key={i} className="h-8 skeleton-shimmer rounded w-full" />
@@ -51,7 +51,7 @@ export function GenreSidebar({ activeGenreSlug, activeCategory }: GenreSidebarPr
   if (isError) {
     return (
       <aside className="hidden lg:block w-56 shrink-0">
-        <div className="sticky top-24 px-3 py-4 text-sm text-red-600">
+        <div className="sticky top-[68px] px-3 py-4 text-sm text-red-600">
           Failed to load genres. Please try again.
         </div>
       </aside>
@@ -73,7 +73,7 @@ export function GenreSidebar({ activeGenreSlug, activeCategory }: GenreSidebarPr
     <>
       {/* Desktop sidebar */}
       <aside className="hidden lg:block w-56 shrink-0">
-        <nav className="sticky top-24">
+        <nav className="sticky top-[68px]">
           <h3 className="font-serif text-lg text-ink mb-3 px-3">Genres</h3>
           <ul className="space-y-0.5">
             <li>
@@ -176,8 +176,8 @@ export function GenreSidebar({ activeGenreSlug, activeCategory }: GenreSidebarPr
         </nav>
       </aside>
 
-      {/* Tablet: horizontal scrollable chips */}
-      <div className="hidden md:flex lg:hidden gap-2 mb-6 overflow-x-auto pb-2 scrollbar-thin">
+      {/* Tablet: horizontal scrollable chips with gradient fade indicators */}
+      <div className="hidden md:flex lg:hidden gap-2 mb-6 overflow-x-auto pb-2 scrollbar-thin relative before:content-[''] before:absolute before:left-0 before:top-0 before:bottom-2 before:w-8 before:bg-gradient-to-r before:from-cream before:to-transparent before:pointer-events-none before:z-10 after:content-[''] after:absolute after:right-0 after:top-0 after:bottom-2 after:w-8 after:bg-gradient-to-l after:from-cream after:to-transparent after:pointer-events-none after:z-10">
         <Link
           to="/"
           className={`shrink-0 px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${

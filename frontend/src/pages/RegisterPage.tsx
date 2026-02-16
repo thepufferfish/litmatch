@@ -56,7 +56,7 @@ export function RegisterPage() {
   return (
     <div className="max-w-md mx-auto mt-12">
       <div className="bg-white rounded-xl shadow-sm border border-parchment p-8">
-        <h1 className="font-serif text-3xl text-ink mb-2 text-center">
+        <h1 className="font-serif text-2xl sm:text-3xl text-ink mb-2 text-center">
           Create an account
         </h1>
         <p className="text-muted text-center mb-8">
@@ -76,7 +76,7 @@ export function RegisterPage() {
               type="text"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              className="w-full px-4 py-2.5 rounded-lg border border-parchment bg-cream/50 text-ink focus:outline-none focus:ring-2 focus:ring-leather/30 focus:border-leather transition-colors"
+              className="w-full px-4 py-3 rounded-lg border border-parchment bg-cream/50 text-ink text-base focus:outline-none focus:ring-2 focus:ring-leather/30 focus:border-leather transition-colors"
               autoComplete="username"
             />
             {errors.username && (
@@ -96,7 +96,7 @@ export function RegisterPage() {
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full px-4 py-2.5 rounded-lg border border-parchment bg-cream/50 text-ink focus:outline-none focus:ring-2 focus:ring-leather/30 focus:border-leather transition-colors"
+              className="w-full px-4 py-3 rounded-lg border border-parchment bg-cream/50 text-ink text-base focus:outline-none focus:ring-2 focus:ring-leather/30 focus:border-leather transition-colors"
               autoComplete="new-password"
             />
             {errors.password && (
@@ -116,7 +116,7 @@ export function RegisterPage() {
               type="password"
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
-              className="w-full px-4 py-2.5 rounded-lg border border-parchment bg-cream/50 text-ink focus:outline-none focus:ring-2 focus:ring-leather/30 focus:border-leather transition-colors"
+              className="w-full px-4 py-3 rounded-lg border border-parchment bg-cream/50 text-ink text-base focus:outline-none focus:ring-2 focus:ring-leather/30 focus:border-leather transition-colors"
               autoComplete="new-password"
             />
             {errors.confirmPassword && (

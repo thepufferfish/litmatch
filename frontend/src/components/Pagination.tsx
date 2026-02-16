@@ -15,13 +15,13 @@ export function Pagination({
 
   return (
     <nav
-      className="flex items-center justify-center gap-1 mt-10"
+      className="flex items-center justify-center gap-2 mt-10"
       aria-label="Pagination"
     >
       <button
         onClick={() => onPageChange(currentPage - 1)}
         disabled={currentPage <= 1}
-        className="px-3 py-2 rounded-lg text-sm font-medium text-ink-light hover:bg-parchment disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer"
+        className="min-w-[44px] min-h-[44px] px-4 py-2.5 rounded-lg text-sm font-medium text-ink-light hover:bg-parchment disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer"
         aria-label="Previous page"
       >
         <svg
@@ -39,34 +39,42 @@ export function Pagination({
         </svg>
       </button>
 
-      {pages.map((page, index) =>
-        page === "ellipsis" ? (
-          <span
-            key={`ellipsis-${index}`}
-            className="px-2 py-2 text-sm text-muted select-none"
-          >
-            ...
-          </span>
-        ) : (
-          <button
-            key={page}
-            onClick={() => onPageChange(page)}
-            className={`min-w-[40px] h-10 rounded-lg text-sm font-medium transition-colors cursor-pointer ${
-              page === currentPage
-                ? "bg-leather text-white shadow-sm"
-                : "text-ink-light hover:bg-parchment"
-            }`}
-            aria-current={page === currentPage ? "page" : undefined}
-          >
-            {page}
-          </button>
-        )
-      )}
+      {/* Mobile: Simple page indicator */}
+      <span className="flex sm:hidden px-3 py-2 text-sm text-ink-light font-medium">
+        Page {currentPage} of {totalPages}
+      </span>
+
+      {/* Desktop: Full numbered pagination */}
+      <div className="hidden sm:flex items-center gap-2">
+        {pages.map((page, index) =>
+          page === "ellipsis" ? (
+            <span
+              key={`ellipsis-${index}`}
+              className="px-2 py-2 text-sm text-muted select-none"
+            >
+              ...
+            </span>
+          ) : (
+            <button
+              key={page}
+              onClick={() => onPageChange(page)}
+              className={`min-w-[44px] h-11 rounded-lg text-sm font-medium transition-colors cursor-pointer ${
+                page === currentPage
+                  ? "bg-leather text-white shadow-sm"
+                  : "text-ink-light hover:bg-parchment"
+              }`}
+              aria-current={page === currentPage ? "page" : undefined}
+            >
+              {page}
+            </button>
+          )
+        )}
+      </div>
 
       <button
         onClick={() => onPageChange(currentPage + 1)}
         disabled={currentPage >= totalPages}
-        className="px-3 py-2 rounded-lg text-sm font-medium text-ink-light hover:bg-parchment disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer"
+        className="min-w-[44px] min-h-[44px] px-4 py-2.5 rounded-lg text-sm font-medium text-ink-light hover:bg-parchment disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer"
         aria-label="Next page"
       >
         <svg

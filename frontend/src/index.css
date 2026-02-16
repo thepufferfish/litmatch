@@ -60,20 +60,22 @@ body {
   animation: shimmer 1.5s ease-in-out infinite;
 }
 
-/* Scrollbar styling */
-::-webkit-scrollbar {
-  width: 8px;
-}
+/* Scrollbar styling - desktop only */
+@media (pointer: fine) {
+  ::-webkit-scrollbar {
+    width: 8px;
+  }
 
-::-webkit-scrollbar-track {
-  background: var(--color-cream);
-}
+  ::-webkit-scrollbar-track {
+    background: var(--color-cream);
+  }
 
-::-webkit-scrollbar-thumb {
-  background: var(--color-parchment-dark);
-  border-radius: 4px;
-}
+  ::-webkit-scrollbar-thumb {
+    background: var(--color-parchment-dark);
+    border-radius: 4px;
+  }
 
-::-webkit-scrollbar-thumb:hover {
-  background: var(--color-muted-light);
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--color-muted-light);
+  }
 }

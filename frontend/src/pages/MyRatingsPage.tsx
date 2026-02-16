@@ -122,7 +122,7 @@ export function MyRatingsPage() {
     <div className="space-y-8">
       {/* Page heading */}
       <div>
-        <h1 className="font-serif text-3xl font-bold text-ink">My Ratings</h1>
+        <h1 className="font-serif text-2xl sm:text-3xl font-bold text-ink">My Ratings</h1>
         <p className="text-muted mt-1">
           {total} {total === 1 ? "book" : "books"} rated
         </p>

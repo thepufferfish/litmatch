@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "react-hot-toast";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { AuthProvider, useAuth } from "@/context/AuthContext";
+import { MobileNav } from "@/components/MobileNav";
 import { BrowsePage } from "@/pages/BrowsePage";
 import { BookDetailPage } from "@/pages/BookDetailPage";
 import { LoginPage } from "@/pages/LoginPage";
@@ -29,57 +30,69 @@ function AuthButtons() {
 
   if (isAuthenticated && user) {
     return (
-      <div className="flex items-center gap-4">
-        <Link
-          to="/profile"
-          className="text-sm text-ink-light hover:text-leather transition-colors"
-        >
-          Recommended
-        </Link>
-        <Link
-          to="/ratings"
-          className="text-sm text-ink-light hover:text-leather transition-colors"
-        >
-          My Ratings
-        </Link>
-        <Link
-          to="/list"
-          className="text-sm text-ink-light hover:text-leather transition-colors"
-        >
-          My List
-        </Link>
-        <span className="text-sm text-ink-light">{user.username}</span>
-        <button
-          onClick={() => void logout()}
-          className="text-sm text-muted hover:text-ink transition-colors cursor-pointer"
-        >
-          Log out
-        </button>
-      </div>
+      <>
+        {/* Desktop navigation - hidden on mobile */}
+        <div className="hidden md:flex items-center gap-2 sm:gap-3 md:gap-4">
+          <Link
+            to="/profile"
+            className="text-sm text-ink-light hover:text-leather transition-colors"
+          >
+            Recommended
+          </Link>
+          <Link
+            to="/ratings"
+            className="text-sm text-ink-light hover:text-leather transition-colors"
+          >
+            My Ratings
+          </Link>
+          <Link
+            to="/list"
+            className="text-sm text-ink-light hover:text-leather transition-colors"
+          >
+            My List
+          </Link>
+          <span className="text-sm text-ink-light">{user.username}</span>
+          <button
+            onClick={() => void logout()}
+            className="text-sm text-muted hover:text-ink transition-colors cursor-pointer"
+          >
+            Log out
+          </button>
+        </div>
+
+        {/* Mobile navigation */}
+        <MobileNav user={user} isAuthenticated={isAuthenticated} onLogout={() => void logout()} />
+      </>
     );
   }
 
   return (
-    <div className="flex items-center gap-3">
-      <Link
-        to="/login"
-        className="text-sm text-ink-light hover:text-ink transition-colors"
-      >
-        Log in
-      </Link>
-      <Link
-        to="/register"
-        className="text-sm px-4 py-1.5 rounded-lg bg-leather text-white font-medium hover:bg-leather-light transition-colors"
-      >
-        Sign up
-      </Link>
-    </div>
+    <>
+      {/* Desktop auth buttons - hidden on mobile */}
+      <div className="hidden md:flex items-center gap-3">
+        <Link
+          to="/login"
+          className="text-sm text-ink-light hover:text-ink transition-colors"
+        >
+          Log in
+        </Link>
+        <Link
+          to="/register"
+          className="text-sm px-4 py-1.5 rounded-lg bg-leather text-white font-medium hover:bg-leather-light transition-colors"
+        >
+          Sign up
+        </Link>
+      </div>
+
+      {/* Mobile navigation */}
+      <MobileNav user={user} isAuthenticated={isAuthenticated} onLogout={() => void logout()} />
+    </>
   );
 }
 
 function Header() {
   return (
-    <header className="sticky top-0 z-50 bg-cream/95 backdrop-blur-sm border-b border-parchment">
+    <header className="sticky top-0 z-50 bg-cream/95 md:backdrop-blur-sm border-b border-parchment">
       <div className="max-w-[var(--container-max)] mx-auto px-6 py-4 flex items-center justify-between">
         <Link to="/" className="group flex items-center gap-3">
           <div className="w-9 h-9 rounded-lg bg-leather flex items-center justify-center">
@@ -113,7 +126,7 @@ function NotFoundPage() {
       <div className="w-20 h-20 rounded-full bg-parchment flex items-center justify-center mb-6">
         <span className="font-serif text-3xl text-muted">404</span>
       </div>
-      <h1 className="font-serif text-3xl text-ink mb-2">Page not found</h1>
+      <h1 className="font-serif text-2xl sm:text-3xl text-ink mb-2">Page not found</h1>
       <p className="text-muted mb-6 max-w-md">
         The page you&apos;re looking for doesn&apos;t exist. It may have been
         moved or the URL might be incorrect.
@@ -152,7 +165,7 @@ export default function App() {
             </div>
           </div>
           <Toaster
-            position="bottom-right"
+            position="bottom-center"
             toastOptions={{
               duration: 4000,
               style: {

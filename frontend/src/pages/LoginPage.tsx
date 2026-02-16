@@ -51,7 +51,7 @@ export function LoginPage() {
   return (
     <div className="max-w-md mx-auto mt-12">
       <div className="bg-white rounded-xl shadow-sm border border-parchment p-8">
-        <h1 className="font-serif text-3xl text-ink mb-2 text-center">
+        <h1 className="font-serif text-2xl sm:text-3xl text-ink mb-2 text-center">
           Welcome back
         </h1>
         <p className="text-muted text-center mb-8">
@@ -71,7 +71,7 @@ export function LoginPage() {
               type="text"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              className="w-full px-4 py-2.5 rounded-lg border border-parchment bg-cream/50 text-ink focus:outline-none focus:ring-2 focus:ring-leather/30 focus:border-leather transition-colors"
+              className="w-full px-4 py-3 rounded-lg border border-parchment bg-cream/50 text-ink text-base focus:outline-none focus:ring-2 focus:ring-leather/30 focus:border-leather transition-colors"
               autoComplete="username"
             />
             {errors.username && (
@@ -91,7 +91,7 @@ export function LoginPage() {
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full px-4 py-2.5 rounded-lg border border-parchment bg-cream/50 text-ink focus:outline-none focus:ring-2 focus:ring-leather/30 focus:border-leather transition-colors"
+              className="w-full px-4 py-3 rounded-lg border border-parchment bg-cream/50 text-ink text-base focus:outline-none focus:ring-2 focus:ring-leather/30 focus:border-leather transition-colors"
               autoComplete="current-password"
             />
             {errors.password && (

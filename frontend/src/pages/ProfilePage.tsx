@@ -54,7 +54,7 @@ export function ProfilePage() {
     <div className="space-y-10">
       {/* Page heading */}
       <div>
-        <h1 className="font-serif text-3xl font-bold text-ink">
+        <h1 className="font-serif text-2xl sm:text-3xl font-bold text-ink">
           Recommended for You
         </h1>
         <p className="text-muted mt-1">

@@ -31,7 +31,7 @@ export function SearchBar({ initialValue = "", onSearch, onClear }: SearchBarPro
   }, [onClear]);
 
   return (
-    <form onSubmit={handleSubmit} className="relative w-full max-w-xl">
+    <form onSubmit={handleSubmit} className="relative w-full max-w-full sm:max-w-xl">
       <div className="relative">
         <svg
           className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4.5 h-4.5 text-muted"
@@ -57,7 +57,7 @@ export function SearchBar({ initialValue = "", onSearch, onClear }: SearchBarPro
           <button
             type="button"
             onClick={handleClear}
-            className="absolute right-14 top-1/2 -translate-y-1/2 p-1 rounded-full hover:bg-parchment text-muted hover:text-ink transition-colors cursor-pointer"
+            className="absolute right-14 top-1/2 -translate-y-1/2 p-2 rounded-full hover:bg-parchment text-muted hover:text-ink transition-colors cursor-pointer"
             aria-label="Clear search"
           >
             <svg
@@ -78,7 +78,7 @@ export function SearchBar({ initialValue = "", onSearch, onClear }: SearchBarPro
         <button
           type="submit"
           disabled={value.trim().length < 2}
-          className="absolute right-2 top-1/2 -translate-y-1/2 px-3.5 py-1.5 rounded-lg bg-leather text-white text-sm font-medium hover:bg-leather-light disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer"
+          className="absolute right-2 top-1/2 -translate-y-1/2 px-4 py-2 rounded-lg bg-leather text-white text-sm font-medium hover:bg-leather-light disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer"
         >
           Search
         </button>

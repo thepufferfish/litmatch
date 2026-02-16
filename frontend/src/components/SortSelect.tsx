@@ -23,7 +23,7 @@ export function SortSelect({ value, onChange }: SortSelectProps) {
   };
 
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2">
       <label
         htmlFor="sort-select"
         className="text-sm text-muted whitespace-nowrap"
@@ -35,7 +35,7 @@ export function SortSelect({ value, onChange }: SortSelectProps) {
         data-testid="sort-select"
         value={value ?? ""}
         onChange={handleChange}
-        className="px-3 py-2 rounded-lg border border-parchment-dark bg-white text-ink text-sm focus:outline-none focus:ring-2 focus:ring-leather/30 focus:border-leather transition-all cursor-pointer"
+        className="w-full sm:w-auto px-3 py-2 rounded-lg border border-parchment-dark bg-white text-ink text-sm focus:outline-none focus:ring-2 focus:ring-leather/30 focus:border-leather transition-all cursor-pointer"
       >
         <option value="">Default</option>
         {SORT_OPTIONS.map((opt) => (

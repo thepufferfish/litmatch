@@ -123,7 +123,7 @@ export function MyListPage() {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="font-serif text-3xl font-bold text-ink">My List</h1>
+        <h1 className="font-serif text-2xl sm:text-3xl font-bold text-ink">My List</h1>
         <p className="text-muted mt-1">
           {total} {total === 1 ? "book" : "books"} saved
         </p>

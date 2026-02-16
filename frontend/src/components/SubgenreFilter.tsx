@@ -24,7 +24,7 @@ export function SubgenreFilter({
       {/* Desktop: vertical sidebar list with independent scroll */}
       <aside className="hidden lg:block w-48 shrink-0">
         <nav
-          className="sticky top-24 max-h-[calc(100vh-7rem)] flex flex-col"
+          className="sticky top-[68px] max-h-[calc(100vh-5rem)] flex flex-col"
           role="radiogroup"
           aria-label="Genre filter"
         >

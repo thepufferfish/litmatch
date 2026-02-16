@@ -1,4 +1,5 @@
-import { Link } from "react-router";
+import { useState } from "react";
+import { Link, useNavigate } from "react-router";
 import type { Book } from "@/types";
 import { CriticRatingBadge } from "@/components/CriticRatingBadge";
 import { InlineRating } from "@/components/InlineRating";
@@ -25,11 +26,28 @@ export function BookCard({
   onAddToList,
   onRemoveFromList,
 }: BookCardProps) {
+  const navigate = useNavigate();
+  const [showDescription, setShowDescription] = useState(false);
   const sortedGenres = [...(book.genres ?? [])].sort((a, b) =>
     a.name.localeCompare(b.name)
   );
   const displayedGenres = sortedGenres.slice(0, 3);
   const remainingCount = sortedGenres.length - 3;
+
+  const handleCoverClick = (e: React.MouseEvent) => {
+    // Only handle tap-to-reveal on mobile (touch devices)
+    if (window.matchMedia("(pointer: coarse)").matches) {
+      if (showDescription) {
+        // Second tap: navigate to detail page
+        navigate(`/books/${book.id}`);
+      } else {
+        // First tap: show description
+        e.preventDefault();
+        setShowDescription(true);
+      }
+    }
+    // On desktop (pointer: fine), let the Link handle navigation normally
+  };
 
   return (
     <Link
@@ -37,13 +55,18 @@ export function BookCard({
       className="group block rounded-lg overflow-hidden bg-white shadow-sm border border-parchment/60 hover:shadow-md hover:border-parchment-dark transition-all duration-200"
     >
       {/* Cover */}
-      <div className="relative aspect-[2/3] overflow-hidden bg-parchment">
+      <div
+        className="relative aspect-[2/3] overflow-hidden bg-parchment"
+        onClick={handleCoverClick}
+      >
         {book.cover ? (
           <img
             src={book.cover}
             alt={`Cover of ${book.title}`}
             className="w-full h-full object-cover group-hover:scale-[1.02] transition-transform duration-300"
             loading="lazy"
+            decoding="async"
+            sizes="(max-width: 640px) 45vw, (max-width: 768px) 30vw, 25vw"
           />
         ) : (
           <div className="w-full h-full flex items-center justify-center">
@@ -63,13 +86,44 @@ export function BookCard({
           </div>
         )}
 
-        {/* Description overlay on hover */}
+        {/* Description overlay - hover on desktop, tap-to-reveal on mobile */}
         {book.description && (
-          <div className="absolute inset-0 bg-white/85 opacity-0 group-hover:opacity-100 transition-opacity duration-300 p-4 pr-12 overflow-y-auto pointer-events-none">
-            <p className="text-sm text-ink leading-relaxed line-clamp-[12]">
-              {book.description}
-            </p>
-          </div>
+          <>
+            {/* Desktop: hover-based overlay */}
+            <div className="hidden sm:block absolute inset-0 bg-white/85 opacity-0 group-hover:opacity-100 transition-opacity duration-300 p-4 pr-12 overflow-y-auto pointer-events-none">
+              <p className="text-sm text-ink leading-relaxed line-clamp-[12]">
+                {book.description}
+              </p>
+            </div>
+            {/* Mobile: tap-to-reveal overlay */}
+            <div
+              className={`sm:hidden absolute inset-0 bg-white/85 transition-opacity duration-300 p-4 pr-12 overflow-y-auto ${
+                showDescription ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
+              }`}
+            >
+              <p className="text-sm text-ink leading-relaxed line-clamp-[12]">
+                {book.description}
+              </p>
+            </div>
+            {/* Mobile info icon hint - only show when description is hidden */}
+            {!showDescription && (
+              <div className="sm:hidden absolute bottom-2 right-2 p-1.5 rounded-full bg-white/80 backdrop-blur-sm shadow-sm pointer-events-none">
+                <svg
+                  className="w-4 h-4 text-ink-light"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  strokeWidth={2}
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="m11.25 11.25.041-.02a.75.75 0 0 1 1.063.852l-.708 2.836a.75.75 0 0 0 1.063.853l.041-.021M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9-3.75h.008v.008H12V8.25Z"
+                  />
+                </svg>
+              </div>
+            )}
+          </>
         )}
 
         {/* List toggle button — above overlay, visible on hover or when on list */}

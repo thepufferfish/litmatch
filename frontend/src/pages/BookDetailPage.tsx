@@ -108,6 +108,9 @@ export function BookDetailPage() {
               src={book.cover}
               alt={`Cover of ${book.title}`}
               className="w-full rounded-lg shadow-md"
+              loading="lazy"
+              decoding="async"
+              sizes="(max-width: 768px) 100vw, (max-width: 1024px) 288px, 320px"
             />
           ) : (
             <div className="aspect-[2/3] rounded-lg bg-parchment flex items-center justify-center shadow-md">
@@ -130,7 +133,7 @@ export function BookDetailPage() {
 
         {/* Book info */}
         <div className="flex-1 min-w-0">
-          <h1 className="font-serif text-3xl lg:text-4xl font-bold text-ink leading-tight">
+          <h1 className="font-serif text-2xl sm:text-3xl lg:text-4xl font-bold text-ink leading-tight">
             {book.title}
           </h1>
 
