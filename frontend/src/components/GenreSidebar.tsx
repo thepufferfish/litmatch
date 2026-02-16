@@ -177,7 +177,12 @@ export function GenreSidebar({ activeGenreSlug, activeCategory }: GenreSidebarPr
       </aside>
 
       {/* Tablet: horizontal scrollable chips with gradient fade indicators */}
-      <div className="hidden md:flex lg:hidden gap-2 mb-6 overflow-x-auto pb-2 scrollbar-thin relative before:content-[''] before:absolute before:left-0 before:top-0 before:bottom-2 before:w-8 before:bg-gradient-to-r before:from-cream before:to-transparent before:pointer-events-none before:z-10 after:content-[''] after:absolute after:right-0 after:top-0 after:bottom-2 after:w-8 after:bg-gradient-to-l after:from-cream after:to-transparent after:pointer-events-none after:z-10">
+      <div className="hidden md:flex lg:hidden gap-2 mb-6 overflow-x-auto pb-2 scrollbar-thin relative">
+        {/* Gradient fade on left - hints at scrollable content */}
+        <div className="absolute left-0 top-0 bottom-2 w-12 bg-gradient-to-r from-cream to-transparent pointer-events-none z-10" />
+        {/* Gradient fade on right - hints at more content */}
+        <div className="absolute right-0 top-0 bottom-2 w-12 bg-gradient-to-l from-cream to-transparent pointer-events-none z-10" />
+
         <Link
           to="/"
           className={`shrink-0 px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${

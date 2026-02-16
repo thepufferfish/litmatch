@@ -66,12 +66,17 @@ export function SubgenreFilter({
         </nav>
       </aside>
 
-      {/* Tablet/mobile: horizontal scrollable pills */}
+      {/* Tablet/mobile: horizontal scrollable pills with gradient fade indicators */}
       <div
         role="radiogroup"
         aria-label="Genre filter"
-        className="lg:hidden flex gap-2 overflow-x-auto pb-2 scrollbar-thin mb-4"
+        className="lg:hidden flex gap-2 overflow-x-auto pb-2 scrollbar-thin mb-4 relative"
       >
+        {/* Gradient fade on left - hints at scrollable content */}
+        <div className="absolute left-0 top-0 bottom-2 w-12 bg-gradient-to-r from-cream to-transparent pointer-events-none z-10" />
+        {/* Gradient fade on right - hints at more content */}
+        <div className="absolute right-0 top-0 bottom-2 w-12 bg-gradient-to-l from-cream to-transparent pointer-events-none z-10" />
+
         <button
           onClick={() => onSelect(undefined)}
           role="radio"
