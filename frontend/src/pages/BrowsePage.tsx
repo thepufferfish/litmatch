@@ -2,10 +2,9 @@ import { useCallback, useEffect, useMemo } from "react";
 import {
   useSearchParams,
   useParams,
-  useNavigate,
   Link,
 } from "react-router";
-import { useBooks, useSearchBooks } from "@/hooks/useBooks";
+import { useBooks } from "@/hooks/useBooks";
 import { useGenres } from "@/hooks/useGenres";
 import { useUserRatingsMap, useSubmitRating, useDeleteRating } from "@/hooks/useRatings";
 import { useMyListIds, useAddToList, useRemoveFromList } from "@/hooks/useMyList";
@@ -24,7 +23,6 @@ const VALID_SORTS = new Set<string>(SORT_OPTIONS.map((o) => o.value));
 export function BrowsePage() {
   const { slug: genreSlug } = useParams<{ slug: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
-  const navigate = useNavigate();
 
   const { user, isAuthenticated } = useAuth();
   const { data: userRatings } = useUserRatingsMap(user?.id);
@@ -66,24 +64,17 @@ export function BrowsePage() {
     ? categoryParam
     : undefined;
 
-  // Determine which query to use
+  // Use unified query with optional search
   const isSearching = searchQuery.length >= 2;
 
-  const booksQuery = useBooks({
+  const { data, isLoading } = useBooks({
     page,
     genre: genreId,
     sort,
     category,
+    q: isSearching ? searchQuery : undefined,
   });
 
-  const searchBooksQuery = useSearchBooks({
-    q: searchQuery,
-    page,
-    sort,
-  });
-
-  const activeQuery = isSearching ? searchBooksQuery : booksQuery;
-  const { data, isLoading } = activeQuery;
   const items = data?.items ?? [];
 
   // Find the active genre name for the empty state message
@@ -133,18 +124,11 @@ export function BrowsePage() {
   };
 
   const handleSearch = (query: string) => {
-    // When searching, reset to page 1 and clear genre, preserve sort
-    if (genreSlug) {
-      const params = new URLSearchParams();
-      params.set("search", query);
-      if (sort) params.set("sort", sort);
-      navigate(`/?${params.toString()}`);
-    } else {
-      const params = new URLSearchParams();
-      params.set("search", query);
-      if (sort) params.set("sort", sort);
-      setSearchParams(params);
-    }
+    // When searching, reset to page 1 but preserve genre, category, and sort filters
+    const params = new URLSearchParams(searchParams);
+    params.set("search", query);
+    params.delete("page");
+    setSearchParams(params);
   };
 
   const handleClearSearch = () => {

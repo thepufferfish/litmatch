@@ -324,6 +324,7 @@ def read_books(
     genre: int | None = None,
     category: BooksCategoryFilter | None = None,
     sort: SortOption | None = Query(default=None),
+    q: str | None = Query(default=None, max_length=200),
 ):
     rating_sub = build_rating_subquery()
 
@@ -338,6 +339,20 @@ def read_books(
     )
     count_stmt = select(func.count(Book.id))
 
+    # Apply full-text search filter
+    fts_rank = None
+    if q is not None:
+        q_stripped = q.strip()
+        if len(q_stripped) < 2:
+            raise HTTPException(
+                status_code=400,
+                detail="Search query must be at least 2 characters",
+            )
+        from backend.app.queries import build_fts_filter
+        fts_filter, fts_rank = build_fts_filter(q_stripped)
+        stmt = stmt.where(fts_filter)
+        count_stmt = count_stmt.where(fts_filter)
+
     # Apply genre filter
     if genre:
         stmt = stmt.join(Book.genres).where(Genre.id == genre)
@@ -351,7 +366,11 @@ def read_books(
         stmt = stmt.where(Book.is_fiction == False)  # noqa: E712
         count_stmt = count_stmt.where(Book.is_fiction == False)  # noqa: E712
 
-    stmt = _apply_sort(stmt, sort, rating_sub)
+    # Apply sorting (relevance first when searching, otherwise standard sort)
+    if fts_rank is not None and sort is None:
+        stmt = stmt.order_by(fts_rank.desc(), Book.title.asc())
+    else:
+        stmt = _apply_sort(stmt, sort, rating_sub)
 
     total = session.exec(count_stmt).one()
     offset = (page - 1) * limit
@@ -360,12 +379,7 @@ def read_books(
     return PaginatedResponse(items=items, total=total, page=page, limit=limit)
 
 
-def escape_like(value: str) -> str:
-    """Escape SQL LIKE/ILIKE wildcards to prevent pattern injection."""
-    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-
-
-@app.get("/books/search", response_model=PaginatedResponse[BookRead])
+@app.get("/books/search", response_model=PaginatedResponse[BookRead], deprecated=True)
 def search_books(
     *,
     session: Session = Depends(get_session),
@@ -374,49 +388,19 @@ def search_books(
     limit: int = Query(default=24, ge=1, le=100),
     sort: SortOption | None = Query(default=None),
 ):
-    if len(q.strip()) < 2:
-        raise HTTPException(
-            status_code=400,
-            detail="Search query must be at least 2 characters",
-        )
-    pattern = f"%{escape_like(q)}%"
-    filter_clause = or_(Book.title.ilike(pattern), Author.name.ilike(pattern))
-    rank = case(
-        (func.lower(Book.title) == q.lower(), 0),
-        (Book.title.ilike(pattern), 1),
-        (Author.name.ilike(pattern), 2),
-        else_=3,
+    """Deprecated: Use GET /books/?q=query instead.
+
+    This endpoint is a thin wrapper around read_books for backward compatibility.
+    """
+    return read_books(
+        session=session,
+        page=page,
+        limit=limit,
+        genre=None,
+        category=None,
+        sort=sort,
+        q=q,
     )
-
-    rating_sub = build_rating_subquery()
-
-    stmt = (
-        select(Book)
-        .options(
-            selectinload(Book.author),
-            selectinload(Book.publisher),
-            selectinload(Book.genres),
-        )
-        .outerjoin(Author, Book.author_id == Author.id)
-        .outerjoin(rating_sub, Book.id == rating_sub.c.book_id)
-        .where(filter_clause)
-    )
-
-    if sort:
-        stmt = _apply_sort(stmt, sort, rating_sub)
-    else:
-        stmt = stmt.order_by(rank, Book.title)
-
-    count_stmt = (
-        select(func.count(Book.id))
-        .outerjoin(Author, Book.author_id == Author.id)
-        .where(filter_clause)
-    )
-    total = session.exec(count_stmt).one()
-    offset = (page - 1) * limit
-    books = session.exec(stmt.offset(offset).limit(limit)).all()
-    items = _annotate_books_with_ratings(session, list(books))
-    return PaginatedResponse(items=items, total=total, page=page, limit=limit)
 
 
 @app.get("/books/{book_id}", response_model=BookRead)

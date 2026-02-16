@@ -7,8 +7,26 @@ import os
 import tempfile
 
 import pytest
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text as sa_text
+from sqlalchemy.dialects.postgresql import TSVECTOR
 from sqlalchemy.engine import Engine
+
+# Register TSVECTOR as TEXT for SQLite so that SQLModel.metadata.create_all()
+# works in unit tests that use in-memory SQLite instead of PostgreSQL.
+from sqlalchemy import event
+from sqlalchemy.pool import StaticPool  # noqa: F401
+
+@event.listens_for(Engine, "connect")
+def _register_tsvector_for_sqlite(dbapi_connection, connection_record):
+    """No-op listener placeholder — real fix is the compile rule below."""
+    pass
+
+# Teach SQLAlchemy to compile TSVECTOR as TEXT on SQLite.
+from sqlalchemy.ext.compiler import compiles
+
+@compiles(TSVECTOR, "sqlite")
+def _compile_tsvector_sqlite(type_, compiler, **kw):
+    return "TEXT"
 
 
 @pytest.fixture

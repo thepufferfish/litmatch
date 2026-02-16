@@ -325,3 +325,129 @@ class TestBooksCategoryFilter:
         assert "category" in param_names, (
             "read_books should have a category parameter"
         )
+
+
+# ---------------------------------------------------------------------------
+# Tests: Full-Text Search (FTS) with q parameter
+# ---------------------------------------------------------------------------
+
+
+class TestBooksFTSSearch:
+    """Tests for the full-text search q parameter on /books/ endpoint."""
+
+    def test_books_q_parameter_accepted(self, client):
+        """GET /books/?q=searchterm should be accepted and return 200."""
+        response = client.get("/books/", params={"q": "test search"})
+        assert response.status_code == 200
+
+    def test_books_q_too_short_returns_400(self, client):
+        """Search query shorter than 2 characters should return 400."""
+        response = client.get("/books/", params={"q": "a"})
+        assert response.status_code == 400
+        data = response.json()
+        assert "Search query must be at least 2 characters" in data["detail"]
+
+    def test_books_q_empty_string_returns_400(self, client):
+        """Empty search query should return 400."""
+        response = client.get("/books/", params={"q": ""})
+        assert response.status_code == 400
+
+    def test_books_q_whitespace_only_returns_400(self, client):
+        """Whitespace-only search query should return 400."""
+        response = client.get("/books/", params={"q": " "})
+        assert response.status_code == 400
+
+    def test_books_q_combined_with_genre_filter(self, client):
+        """q parameter should work with genre filter."""
+        response = client.get("/books/", params={"q": "fiction", "genre": 1})
+        assert response.status_code == 200
+
+    def test_books_q_combined_with_category_filter(self, client):
+        """q parameter should work with category filter."""
+        response = client.get("/books/", params={"q": "mystery", "category": "fiction"})
+        assert response.status_code == 200
+
+    def test_books_q_combined_with_sort(self, client):
+        """q parameter should work with sort parameter."""
+        response = client.get("/books/", params={"q": "novel", "sort": "title_asc"})
+        assert response.status_code == 200
+
+    def test_books_q_max_length_validation(self, client):
+        """Search query exceeding max_length should return 422."""
+        long_query = "a" * 201  # max_length is 200
+        response = client.get("/books/", params={"q": long_query})
+        assert response.status_code == 422
+
+    def test_books_q_parameter_exists_in_openapi(self):
+        """The q parameter should be documented in OpenAPI schema."""
+        schema = app.openapi()
+        books_path = schema["paths"].get("/books/", {})
+        get_op = books_path.get("get", {})
+        parameters = get_op.get("parameters", [])
+        param_names = {p.get("name") for p in parameters}
+        assert "q" in param_names, (
+            "/books/ OpenAPI schema should include q parameter"
+        )
+
+    def test_read_books_function_has_q_parameter(self):
+        """The read_books function should accept a q parameter."""
+        sig = inspect.signature(read_books)
+        param_names = set(sig.parameters.keys())
+        assert "q" in param_names, (
+            "read_books should have a q parameter"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Tests: Query helper functions (build_fts_filter, escape_like)
+# ---------------------------------------------------------------------------
+
+
+class TestQueryHelpers:
+    """Tests for query helper functions in backend.app.queries."""
+
+    def test_escape_like_escapes_backslash(self):
+        """escape_like should escape backslash characters."""
+        from backend.app.queries import escape_like
+        assert escape_like("test\\value") == "test\\\\value"
+
+    def test_escape_like_escapes_percent(self):
+        """escape_like should escape percent wildcard."""
+        from backend.app.queries import escape_like
+        assert escape_like("test%value") == "test\\%value"
+
+    def test_escape_like_escapes_underscore(self):
+        """escape_like should escape underscore wildcard."""
+        from backend.app.queries import escape_like
+        assert escape_like("test_value") == "test\\_value"
+
+    def test_escape_like_escapes_all_wildcards(self):
+        """escape_like should handle multiple wildcards."""
+        from backend.app.queries import escape_like
+        assert escape_like("test%_value\\end") == "test\\%\\_value\\\\end"
+
+    def test_escape_like_handles_empty_string(self):
+        """escape_like should handle empty string."""
+        from backend.app.queries import escape_like
+        assert escape_like("") == ""
+
+    def test_build_fts_filter_returns_tuple(self):
+        """build_fts_filter should return a tuple of (filter, rank)."""
+        from backend.app.queries import build_fts_filter
+        result = build_fts_filter("test query")
+        assert isinstance(result, tuple)
+        assert len(result) == 2
+
+    def test_build_fts_filter_with_empty_query(self):
+        """build_fts_filter should handle empty query."""
+        from backend.app.queries import build_fts_filter
+        filter_clause, rank_expr = build_fts_filter("")
+        assert filter_clause is not None
+        assert rank_expr is not None
+
+    def test_build_fts_filter_with_special_characters(self):
+        """build_fts_filter should handle special characters."""
+        from backend.app.queries import build_fts_filter
+        filter_clause, rank_expr = build_fts_filter("test & query | special")
+        assert filter_clause is not None
+        assert rank_expr is not None

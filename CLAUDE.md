@@ -67,7 +67,7 @@ Dagster → Scrapyd (crawl) → PostgreSQL staging table → Dagster ETL → Pos
 
 - **`src/litmatch/`** — Dagster orchestration. Modular assets in `defs/assets/` run a multi-stage pipeline: crawl_books (trigger Scrapyd spider and poll for completion) -> raw_books (read from staging table) -> validated_books (field validation) -> cleaned_books (transform dates, ratings, fiction flag) -> load_books (upsert to PostgreSQL) -> cleanup_staging (remove old staging rows) -> review_embeddings -> book_embeddings. Maintenance assets in `defs/assets/maintenance.py` (cleanup_expired_tokens, cleanup_staging). Resources in `defs/resources/` (DatabaseResource, PathResource, ScrapydResource, EmbeddingModelResource), sensors in `defs/sensors/`, jobs in `defs/jobs.py`, utilities in `defs/utils/` (including `staging.py` for staging table operations). Two sensors: `staging_data_sensor` (watches staging table for new crawl data, triggers ETL when a new crawl_job_id appears) and `startup_crawl_sensor` (fires exactly once on first deployment when Scrapyd is healthy, triggers a crawl to seed the database). Three jobs: `etl_pipeline` (full ETL from raw_books through embeddings), `crawl` (trigger Scrapyd crawl only), and `embedding_pipeline` (generate embeddings only). Dagster root module is `litmatch`.
 
-- **`backend/`** — FastAPI REST API. Models in `backend/db/models.py` use SQLModel. `backend/database.py` handles DB init and pgvector extension setup. Endpoints: auth (register/login/refresh), books, reviews, genres, ratings. Config in `backend/app/config.py` reads env vars. Runs in Podman on port 8000 (compose) or port 80 (Makefile standalone).
+- **`backend/`** — FastAPI REST API. Models in `backend/db/models.py` use SQLModel. `backend/database.py` handles DB init and pgvector extension setup. Endpoints: auth (register/login/refresh), books (with full-text search via `q` parameter), reviews, genres, ratings. Query helpers in `backend/app/queries.py` include `build_fts_filter()` for PostgreSQL full-text search and `escape_like()` for SQL wildcard escaping. Config in `backend/app/config.py` reads env vars. Runs in Podman on port 8000 (compose) or port 80 (Makefile standalone).
 
 - **`frontend/`** — React SPA (Vite + TypeScript + Tailwind CSS v4). Entry point is `src/main.tsx`, API client in `src/api/client.ts`, pages under `src/pages/`, components under `src/components/`. Uses TanStack React Query for data fetching, react-router v7 for routing, AuthContext for JWT auth. The Vite dev server proxies `/api/*` to the backend on port 8000 (stripping the `/api` prefix).
 
@@ -76,11 +76,41 @@ Dagster → Scrapyd (crawl) → PostgreSQL staging table → Dagster ETL → Pos
 ## Database Schema
 
 PostgreSQL with pgvector. Key entities defined in `backend/db/models.py`:
-- **Book** — central entity (title, author, publisher, isbn, description, fiction flag)
+- **Book** — central entity (title, author, publisher, isbn, description, fiction flag, `search_vector` tsvector column for full-text search)
 - **Author**, **Publisher** — one-to-many with Book
 - **Genre** — many-to-many with Book via BookGenreLink
 - **Review** — linked to Book, Critic, and Publication
 - **User**, **UserRating** — authentication and book ratings
+
+### Full-Text Search
+
+The `books` table includes a `search_vector` tsvector column (GIN index) that enables fast full-text search across book titles, author names, and descriptions. The column is automatically maintained by PostgreSQL triggers that update the search vector whenever book data changes. See Alembic migration `003_add_fts_to_books.py` for implementation details.
+
+## API Endpoints
+
+### Books Search
+
+**GET /books/** — Main books listing and search endpoint. Supports full-text search and filtering.
+
+Query parameters:
+- `q` (string, optional) — Full-text search query (min 2 characters, max 200). Searches across book titles, author names, and descriptions. Results are ordered by relevance when `q` is provided and no explicit `sort` is specified.
+- `genre` (integer, optional) — Filter by genre ID
+- `category` (string, optional) — Filter by category (`"fiction"` or `"nonfiction"`)
+- `sort` (string, optional) — Sort order: `title_asc`, `title_desc`, `date_desc`, `date_asc`, `rating_desc`, `reviews_desc`
+- `page` (integer, default=1) — Page number (≥1)
+- `limit` (integer, default=24) — Items per page (1-100)
+
+All filters can be combined: `GET /books/?q=mystery&genre=1&category=fiction&sort=title_asc`
+
+**GET /books/search** — **DEPRECATED**. Legacy search endpoint maintained for backward compatibility. Thin wrapper around `GET /books/?q=...`. New code should use `GET /books/` with the `q` parameter.
+
+### Implementation Details
+
+- Full-text search uses PostgreSQL's `plainto_tsquery()` with the "english" text search configuration
+- Query helpers in `backend/app/queries.py`:
+  - `build_fts_filter(query_text)` — Returns `(filter_clause, rank_expr)` tuple for WHERE and ORDER BY
+  - `escape_like(value)` — Escapes SQL LIKE/ILIKE wildcards (`%`, `_`, `\`) to prevent pattern injection
+- Frontend unified search: `useBooks` hook in `frontend/src/hooks/useBooks.ts` accepts `searchQuery` parameter and preserves filters during search
 
 ## Key Configuration
 
@@ -130,7 +160,7 @@ tests/
     test_validation.py  # Input validation tests
   backend/              # Unit tests for backend API (auth, endpoints, security)
     test_auth.py        # Authentication flow tests
-    test_books_endpoint.py  # Books endpoint tests
+    test_books_endpoint.py  # Books endpoint tests (includes TestBooksFTSSearch and TestQueryHelpers)
     test_rate_limit.py  # Rate limiting tests
     test_security_headers.py  # Security headers tests
   frontend/             # Frontend infrastructure tests
@@ -142,5 +172,5 @@ tests/
     test_container_health.py  # Service health and port reachability
     test_database.py    # Schema initialization and connectivity
     test_etl_pipeline.py     # Full ETL pipeline execution via GraphQL API
-    test_backend_api.py      # REST API endpoints (auth, books, search, ratings)
+    test_backend_api.py      # REST API endpoints (auth, books, FTS search, ratings)
 ```

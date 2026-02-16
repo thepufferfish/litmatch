@@ -31,15 +31,16 @@ def include_name(name, type_, parent_names):
 
 
 def compare_type(context, inspected_column, metadata_column, inspected_type, metadata_type):
-    """Handle pgvector Vector type comparison.
+    """Handle pgvector Vector and TSVECTOR type comparison.
 
-    Alembic doesn't natively understand Vector columns. Without this,
-    autogenerate would emit ALTER operations for vector columns every time.
+    Alembic doesn't natively understand Vector or TSVECTOR columns. Without this,
+    autogenerate would emit ALTER operations for these columns every time.
     Return False to indicate no type change.
     """
     from pgvector.sqlalchemy import Vector
+    from sqlalchemy.dialects.postgresql import TSVECTOR
 
-    if isinstance(metadata_type, Vector) or isinstance(inspected_type, Vector):
+    if isinstance(metadata_type, (Vector, TSVECTOR)) or isinstance(inspected_type, (Vector, TSVECTOR)):
         return False
     return None  # Let Alembic use default comparison
 

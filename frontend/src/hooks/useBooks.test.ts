@@ -1,7 +1,7 @@
 import { renderHook, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createElement, type ReactNode } from "react";
-import { useBooks, useSearchBooks } from "./useBooks";
+import { useBooks } from "./useBooks";
 import api from "@/api/client";
 import type { Mock } from "vitest";
 import type { Book, PaginatedResponse } from "@/types";
@@ -198,7 +198,7 @@ describe("useBooks", () => {
   });
 });
 
-describe("useSearchBooks", () => {
+describe("useBooks with q (search)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -207,7 +207,7 @@ describe("useSearchBooks", () => {
     mockGet.mockResolvedValue({ data: validResponse });
 
     const { result } = renderHook(
-      () => useSearchBooks({ q: "test query", page: 1 }),
+      () => useBooks({ q: "test query", page: 1 }),
       { wrapper: createWrapper() }
     );
 
@@ -216,17 +216,19 @@ describe("useSearchBooks", () => {
     expect(result.current.data).toEqual(validResponse);
   });
 
-  it("is disabled when query is shorter than 2 characters", () => {
+  it("includes q param in API call", async () => {
     mockGet.mockResolvedValue({ data: validResponse });
 
     const { result } = renderHook(
-      () => useSearchBooks({ q: "a", page: 1 }),
+      () => useBooks({ q: "fiction", page: 1 }),
       { wrapper: createWrapper() }
     );
 
-    // Should not fetch
-    expect(result.current.fetchStatus).toBe("idle");
-    expect(mockGet).not.toHaveBeenCalled();
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    expect(mockGet).toHaveBeenCalledWith("/books/", {
+      params: { page: 1, limit: 24, q: "fiction" },
+    });
   });
 
   it("normalizes malformed search response", async () => {
@@ -234,7 +236,7 @@ describe("useSearchBooks", () => {
     mockGet.mockResolvedValue({ data: malformed });
 
     const { result } = renderHook(
-      () => useSearchBooks({ q: "test", page: 1, limit: 24 }),
+      () => useBooks({ q: "test", page: 1, limit: 24 }),
       { wrapper: createWrapper() }
     );
 

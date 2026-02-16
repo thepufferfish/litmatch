@@ -50,7 +50,7 @@ export function SearchBar({ initialValue = "", onSearch, onClear }: SearchBarPro
           type="text"
           value={value}
           onChange={(e) => setValue(e.target.value)}
-          placeholder="Search by title or author..."
+          placeholder="Search by title, author, or description..."
           className="w-full pl-11 pr-20 py-3 rounded-xl border border-parchment-dark bg-white text-ink placeholder:text-muted-light focus:outline-none focus:ring-2 focus:ring-leather/30 focus:border-leather transition-all"
         />
         {value && (

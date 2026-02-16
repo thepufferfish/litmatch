@@ -27,16 +27,18 @@ interface UseBooksParams {
   genre?: number;
   sort?: BookSortOption;
   category?: "fiction" | "nonfiction";
+  q?: string;
 }
 
-export function useBooks({ page = 1, limit = 24, genre, sort, category }: UseBooksParams = {}) {
+export function useBooks({ page = 1, limit = 24, genre, sort, category, q }: UseBooksParams = {}) {
   return useQuery({
-    queryKey: ["books", { page, limit, genre, sort, category }],
+    queryKey: ["books", { page, limit, genre, sort, category, q }],
     queryFn: async () => {
       const params: Record<string, string | number> = { page, limit };
       if (genre) params.genre = genre;
       if (sort) params.sort = sort;
       if (category) params.category = category;
+      if (q) params.q = q;
       const { data } = await api.get<PaginatedResponse<Book>>("/books/", {
         params,
       });
@@ -55,34 +57,5 @@ export function useBook(id: number) {
     },
     staleTime: 5 * 60 * 1000,
     enabled: !!id,
-  });
-}
-
-interface UseSearchBooksParams {
-  q: string;
-  page?: number;
-  limit?: number;
-  sort?: BookSortOption;
-}
-
-export function useSearchBooks({
-  q,
-  page = 1,
-  limit = 24,
-  sort,
-}: UseSearchBooksParams) {
-  return useQuery({
-    queryKey: ["books", { search: q, page, limit, sort }],
-    queryFn: async () => {
-      const params: Record<string, string | number> = { q, page, limit };
-      if (sort) params.sort = sort;
-      const { data } = await api.get<PaginatedResponse<Book>>(
-        "/books/search",
-        { params }
-      );
-      return normalizePaginatedResponse(data, limit);
-    },
-    staleTime: 5 * 60 * 1000,
-    enabled: q.length >= 2,
   });
 }

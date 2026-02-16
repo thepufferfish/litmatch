@@ -172,3 +172,197 @@ class TestErrorHandling:
         response = http_client.get(f"{backend_url}/nonexistent")
 
         assert response.status_code == 404
+
+
+class TestFullTextSearch:
+    """Tests for full-text search functionality on /books/ endpoint."""
+
+    def test_fts_basic_search_returns_results(
+        self, backend_url: str, http_client: httpx.Client
+    ) -> None:
+        """GET /books/?q=<term> should return matching books."""
+        response = http_client.get(f"{backend_url}/books/?q=fiction")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert "items" in data
+        assert "total" in data
+        assert isinstance(data["items"], list)
+
+    def test_fts_search_with_genre_filter(
+        self, backend_url: str, http_client: httpx.Client
+    ) -> None:
+        """FTS should work combined with genre filter."""
+        response = http_client.get(
+            f"{backend_url}/books/?q=novel&genre=1"
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert "items" in data
+        assert "total" in data
+
+    def test_fts_search_with_category_fiction(
+        self, backend_url: str, http_client: httpx.Client
+    ) -> None:
+        """FTS should work combined with fiction category filter."""
+        response = http_client.get(
+            f"{backend_url}/books/?q=story&category=fiction"
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert "items" in data
+
+    def test_fts_search_with_category_nonfiction(
+        self, backend_url: str, http_client: httpx.Client
+    ) -> None:
+        """FTS should work combined with nonfiction category filter."""
+        response = http_client.get(
+            f"{backend_url}/books/?q=history&category=nonfiction"
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert "items" in data
+
+    def test_fts_search_with_sort_title(
+        self, backend_url: str, http_client: httpx.Client
+    ) -> None:
+        """FTS should work with title sorting."""
+        response = http_client.get(
+            f"{backend_url}/books/?q=book&sort=title_asc"
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert "items" in data
+        if len(data["items"]) >= 2:
+            # Verify titles are in ascending order
+            titles = [item["title"] for item in data["items"]]
+            assert titles == sorted(titles)
+
+    def test_fts_search_with_sort_date(
+        self, backend_url: str, http_client: httpx.Client
+    ) -> None:
+        """FTS should work with date sorting."""
+        response = http_client.get(
+            f"{backend_url}/books/?q=novel&sort=date_desc"
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert "items" in data
+
+    def test_fts_search_relevance_ordering(
+        self, backend_url: str, http_client: httpx.Client
+    ) -> None:
+        """When no sort is specified, results should be ordered by relevance."""
+        response = http_client.get(f"{backend_url}/books/?q=gardener")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert "items" in data
+        # With FTS, items should come back even if only one matches
+        # The most relevant match should appear first
+
+    def test_fts_search_combined_all_filters(
+        self, backend_url: str, http_client: httpx.Client
+    ) -> None:
+        """FTS should work with q + genre + category + sort combined."""
+        response = http_client.get(
+            f"{backend_url}/books/?q=fiction&genre=1&category=fiction&sort=title_asc"
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert "items" in data
+        assert "total" in data
+
+    def test_fts_search_pagination(
+        self, backend_url: str, http_client: httpx.Client
+    ) -> None:
+        """FTS results should support pagination."""
+        response = http_client.get(
+            f"{backend_url}/books/?q=book&page=1&limit=2"
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["page"] == 1
+        assert data["limit"] == 2
+        assert "items" in data
+
+    def test_fts_search_too_short_query(
+        self, backend_url: str, http_client: httpx.Client
+    ) -> None:
+        """FTS query shorter than 2 characters should return 400."""
+        response = http_client.get(f"{backend_url}/books/?q=x")
+
+        assert response.status_code == 400
+        data = response.json()
+        assert "Search query must be at least 2 characters" in data["detail"]
+
+    def test_fts_search_empty_query(
+        self, backend_url: str, http_client: httpx.Client
+    ) -> None:
+        """FTS with empty query should return 400."""
+        response = http_client.get(f"{backend_url}/books/?q=")
+
+        assert response.status_code == 400
+
+
+class TestDeprecatedSearchEndpoint:
+    """Tests for the deprecated /books/search endpoint."""
+
+    def test_deprecated_search_endpoint_still_works(
+        self, backend_url: str, http_client: httpx.Client
+    ) -> None:
+        """The deprecated /books/search endpoint should still function."""
+        response = http_client.get(f"{backend_url}/books/search?q=novel")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert "items" in data
+        assert "total" in data
+
+    def test_deprecated_search_with_pagination(
+        self, backend_url: str, http_client: httpx.Client
+    ) -> None:
+        """Deprecated search should support pagination."""
+        response = http_client.get(
+            f"{backend_url}/books/search?q=book&page=1&limit=5"
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["page"] == 1
+        assert data["limit"] == 5
+
+    def test_deprecated_search_with_sort(
+        self, backend_url: str, http_client: httpx.Client
+    ) -> None:
+        """Deprecated search should support sort parameter."""
+        response = http_client.get(
+            f"{backend_url}/books/search?q=fiction&sort=title_asc"
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert "items" in data
+
+    def test_deprecated_search_too_short_query(
+        self, backend_url: str, http_client: httpx.Client
+    ) -> None:
+        """Deprecated search should enforce minimum query length."""
+        response = http_client.get(f"{backend_url}/books/search?q=a")
+
+        assert response.status_code == 400
+
+    def test_deprecated_search_empty_query(
+        self, backend_url: str, http_client: httpx.Client
+    ) -> None:
+        """Deprecated search should reject empty query."""
+        response = http_client.get(f"{backend_url}/books/search?q=")
+
+        assert response.status_code == 400
