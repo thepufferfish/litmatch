@@ -47,6 +47,10 @@ cp .env.example .env
 | `SCRAPYD_URL` | Scrapyd API URL (used by Dagster to trigger crawl jobs; `scrapyd` for compose, `localhost` for local dev) | No | `http://scrapyd:6800` |
 | `RAW_DATA_DIR` | Path to raw data directory (set automatically in compose.yaml) | No | `/data/raw` |
 | `EMBEDDING_MODEL_NAME` | Sentence-transformers model for review embeddings | No | `all-MiniLM-L6-v2` |
+| `DAGSTER_STORAGE_URL` | PostgreSQL connection for Dagster internal storage (set automatically in compose.yaml) | No | `postgresql://bookuser:changeme@localhost:5432/dagster` |
+| `BACKUP_DIR` | Directory for database backup dumps | No | `/var/backups/litmatch` |
+| `LOG_FILE` | Log file for backup operations | No | `/var/log/litmatch-backup.log` |
+| `BACKUP_RETENTION_DAYS` | Days to retain backup files before automatic deletion | No | `14` |
 
 **Connection String Notes:**
 - For compose deployment: use `db` as hostname (container name)
@@ -91,6 +95,13 @@ python -m backend.database
 | `make test-integration-down` | Tear down the integration test compose stack |
 | `make test-all` | Run unit + integration tests |
 | `make test-coverage` | Run unit tests with coverage report |
+| `make backup-db` | Run database backup script |
+| `make backup-verify` | Verify latest database backup |
+| `make restore-db` | Show restore usage (runs `scripts/restore-db.sh`) |
+| `make migrate` | Run Alembic migrations (upgrade to head) |
+| `make migrate-generate` | Auto-generate a new Alembic migration |
+| `make migrate-history` | Show Alembic migration history |
+| `make migrate-downgrade` | Downgrade one Alembic migration |
 
 ### Python / Backend
 
@@ -350,10 +361,13 @@ The `/api` prefix is **stripped** before forwarding. Backend routes have **no** 
 | `GET` | `/books/{book_id}` | Get book details | No |
 | `GET` | `/reviews/{book_id}` | Get reviews for a book | No |
 | `GET` | `/genres/` | List all genres | No |
+| `GET` | `/genres/grouped` | Genres grouped by fiction/nonfiction/unknown | No |
 | `GET` | `/users/me` | Get current user profile | Yes |
-| `GET` | `/recommendations/` | Get personalized recommendations | Yes |
+| `GET` | `/users/me/rated-books/` | Paginated list of user's rated books | Yes |
+| `GET` | `/recommendations/` | Get personalized or popular recommendations | Optional |
 | `GET` | `/ratings/` | Get user's ratings | Yes |
 | `POST` | `/ratings/` | Rate a book | Yes |
+| `DELETE` | `/ratings/{book_id}` | Delete a rating | Yes |
 
 ## Code Style
 

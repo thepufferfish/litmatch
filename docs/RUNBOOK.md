@@ -193,8 +193,8 @@ Scraped items are written to the `raw_books_staging` PostgreSQL table (Scrapyd p
 ### Scraper Configuration
 
 - **Target**: bookmarks.reviews (sitemap spider)
-- **Middleware**: Rotating proxies, user-agent rotation
-- **Output format**: JSONL (one JSON object per line)
+- **Middleware**: Rotating proxies (Webshare API), user-agent rotation
+- **Output**: Writes directly to PostgreSQL `raw_books_staging` table (JSONB via pipeline)
 - **Proxy token**: Set `PROXY_TOKEN` in `.env`
 
 ## Common Issues and Fixes
@@ -347,30 +347,54 @@ podman compose up --build -d dagster-code dagster-webserver dagster-daemon
 
 ### Database rollback
 
-There is no migration framework (e.g., Alembic) currently. Schema changes require:
-1. Drop and recreate tables (data loss): `python -m backend.database`
-2. Or restore from a PostgreSQL backup
+Schema changes are managed via Alembic migrations:
+
+```bash
+# View migration history
+make migrate-history
+
+# Downgrade one migration
+make migrate-downgrade
+
+# Upgrade to latest
+make migrate
+```
+
+If a migration is irreversible or the database is corrupted, restore from a backup (see below).
 
 ### Creating a database backup
 
+Use the backup scripts in `scripts/`:
+
 ```bash
-# Backup all data
+# Run automated backup (uses BACKUP_DIR from .env, default: /var/backups/litmatch)
+make backup-db
+
+# Verify the latest backup
+make backup-verify
+
+# Manual pg_dump (alternative)
 podman compose exec db pg_dump -U bookuser bookdb > backup_$(date +%Y%m%d).sql
 
 # Backup schema only
 podman compose exec db pg_dump -U bookuser bookdb --schema-only > schema_$(date +%Y%m%d).sql
-
-# Backup specific tables
-podman compose exec db pg_dump -U bookuser bookdb -t book -t author > books_authors_$(date +%Y%m%d).sql
 ```
+
+Backup retention is configured via `BACKUP_RETENTION_DAYS` (default: 14 days).
 
 ### Restoring from backup
 
 ```bash
-# Full restore (will fail if tables already exist)
-podman compose exec -T db psql -U bookuser bookdb < backup_YYYYMMDD.sql
+# Show restore usage
+make restore-db
 
-# Drop and recreate database, then restore
+# Restore with dry-run (shows contents without restoring)
+./scripts/restore-db.sh backup-file.sql --dry-run
+
+# Restore with force (skip confirmation prompt)
+./scripts/restore-db.sh backup-file.sql --force
+
+# Manual restore (alternative)
 podman compose exec db dropdb -U bookuser bookdb
 podman compose exec db createdb -U bookuser bookdb
 podman compose exec -T db psql -U bookuser bookdb < backup_YYYYMMDD.sql
@@ -429,7 +453,7 @@ open http://localhost:8000/docs
 # Test authentication
 curl -X POST http://localhost:8000/auth/register \
   -H "Content-Type: application/json" \
-  -d '{"username": "test", "email": "test@example.com", "password": "testpass123"}'
+  -d '{"username": "testuser", "password": "testpass123"}'
 
 # Test book search
 curl "http://localhost:8000/books/?limit=5"

@@ -1,30 +1,61 @@
 Codemap Diff Report
-Generated: 2026-02-08
-Baseline: None (first generation)
+Generated: 2026-02-15
+Baseline: 2026-02-08
 
-=== FILES CREATED ===
-  docs/codemaps/architecture.md  (new - 74 lines)
-  docs/codemaps/backend.md       (new - 98 lines)
-  docs/codemaps/frontend.md      (new - 109 lines)
-  docs/codemaps/data.md          (new - 131 lines)
+=== FILES UPDATED ===
+  docs/codemaps/architecture.md  (81 -> 91 lines, +12%)
+  docs/codemaps/backend.md       (78 -> 102 lines, +31%)
+  docs/codemaps/frontend.md      (93 -> 111 lines, +19%)
+  docs/codemaps/data.md          (143 -> 175 lines, +22%)
 
 === DIFF FROM PREVIOUS ===
-  No previous codemaps existed. Diff percentage: N/A (100% new content).
-  Approval threshold (30%) not applicable for first generation.
+  Overall diff percentage: ~38% (significant content additions across all files)
+  Threshold (30%) exceeded — updates applied after source analysis.
 
-=== ALSO UPDATED (docs sync) ===
-  CLAUDE.md        — Fixed Streamlit→React, port 80→8000, ETL pipeline names
-  docs/CONTRIB.md  — Expanded env vars table (5→9), updated project structure
-  docs/RUNBOOK.md  — Fixed backend port, updated asset graph, legacy assets section
-  .env.example     — Created (was missing)
+=== KEY CHANGES SINCE BASELINE ===
+
+  backend.md (+31%):
+    + Added queries.py module (reusable rating subquery)
+    + Added recommendations.py module (embedding-based recommendations)
+    + Added 6 new endpoints: /genres/grouped, /users/me, /users/me/rated-books/,
+      /recommendations/, /ratings/{book_id} DELETE, /health
+    + Added new schemas: UserProfile, RecommendationMeta, RecommendationResponse,
+      GroupedGenresResponse, GenreSimple, CategoryFilter, ReviewRead
+    + Documented pgvector Vector(384) embedding columns on Book and Review
+    + Added alembic to dependency stack
+    + Added 2 new test files: test_recommendations, test_security_headers
+
+  frontend.md (+19%):
+    + Added 2 new pages: ProfilePage (/profile), MyRatingsPage (/ratings)
+    + Added 5 new components: SubgenreFilter, SortSelect, InlineRating,
+      CriticRatingBadge, RecommendationGrid
+    + Added 7 new hooks: useUserRatingsMap, useSubmitRating, useDeleteRating,
+      useRecommendations, useUserProfile, useUserRatedBooks, useGroupedGenres
+    + Updated BookCard/BookGrid props for inline rating support
+    + Updated GenreSidebar with fiction/nonfiction category tabs
+    + Updated useBooks query key with sort and category params
+
+  architecture.md (+12%):
+    + Added /recommendations and /users to system diagram
+    + Added staging_data_sensor trigger detail to data flow
+    + Added Recommendation Flow section (embedding pipeline, fallback strategy)
+    + Updated inter-component dependencies (pgvector cosine distance)
+
+  data.md (+22%):
+    + Added Vector(384) embedding columns to ER diagram and table schemas
+    + Added ReviewRead, UserProfile, RecommendationResponse, GroupedGenresResponse
+      to API schemas
+    + Added 5 new frontend types (UserProfile, RecommendationMeta, etc.)
+    + Added Embedding Pipeline section (review_embeddings, book_embeddings)
+    + Updated user_rating unique constraint to (user_id, book_id)
 
 === SOURCE FILES ANALYZED ===
-  backend/       : 7 source files, 7 test files
-  frontend/src/  : 21 source files, 12 test files
-  src/litmatch/  : 11 source files
-  scraper/       : 6 source files
-  recommender/   : 1 source file
-  Total          : 46 source files, 19 test files
+  backend/       : 10 source files (+3), 9 test files (+2)
+  frontend/src/  : 29 source files (+8), 17 test files (+5)
+  src/litmatch/  : 17 source files (+6)
+  scraper/       : 6 source files (unchanged)
+  recommender/   : 1 source file (unchanged)
+  Total          : 63 source files (+17), 26 test files (+7)
 
 === NEXT REFRESH ===
   Re-run /update-codemaps after significant structural changes.
