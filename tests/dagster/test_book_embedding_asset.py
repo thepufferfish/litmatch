@@ -215,11 +215,11 @@ def _seed_book_with_unembedded_reviews(
 
 
 def _get_book_embedding(conn_str: str, book_id: int) -> str | None:
-    """Read the raw embedding value from a book row."""
+    """Read the raw review_embedding value from the book_embeddings table."""
     engine = create_engine(conn_str)
     with Session(engine) as session:
         result = session.execute(
-            sa_text("SELECT embedding FROM book WHERE id = :id"),
+            sa_text("SELECT review_embedding FROM book_embeddings WHERE book_id = :id"),
             {"id": book_id},
         ).one_or_none()
     engine.dispose()
@@ -709,3 +709,55 @@ class TestEmbeddingPipelineJob:
 
         selection_str = str(crawl_job.selection)
         assert "book_embeddings" not in selection_str
+
+
+class TestBookEmbeddingsN1Elimination:
+    """Tests that book_embeddings uses a batch pre-fetch for existence checks."""
+
+    def test_batch_prefetch_replaces_per_row_select(self) -> None:
+        """The asset should do one batch SELECT for existing book IDs, not N individual ones."""
+        from litmatch.defs.assets.embedding import book_embeddings
+        from litmatch.defs.resources.database import DatabaseResource
+        from sqlmodel import Session as SMSession
+
+        conn_str, _ = _make_test_db()
+        num_books = 5
+        for i in range(num_books):
+            _seed_book_with_embedded_reviews(
+                conn_str, f"N1 Test Book {i}", review_count=1, seed=i + 10
+            )
+
+        db_resource = DatabaseResource(connection_string=conn_str)
+
+        execute_calls: list[str] = []
+        original_execute = SMSession.execute
+
+        def tracking_execute(self, stmt, *args, **kwargs):
+            stmt_str = str(stmt)
+            execute_calls.append(stmt_str)
+            return original_execute(self, stmt, *args, **kwargs)
+
+        context = dg.build_asset_context(resources={"database": db_resource})
+
+        with patch.object(SMSession, "execute", tracking_execute):
+            result = book_embeddings(context)
+
+        assert result.metadata["books_computed"] == num_books
+
+        # With N+1 pattern: would be num_books individual SELECTs per book.
+        # With batch pre-fetch: exactly 1 SELECT using "book_id IN" clause.
+        # The asset also has another SELECT on book_embeddings to find existing embeddings
+        # (WHERE review_embedding IS NOT NULL), but that's a different query.
+        # We only count the new batch-prefetch SELECT which uses "book_id IN (...)".
+        batch_prefetch_selects = [
+            c for c in execute_calls
+            if "book_embeddings" in c.lower()
+            and "select" in c.lower()
+            and "book_id in" in c.lower()
+        ]
+        assert len(batch_prefetch_selects) == 1, (
+            f"Expected 1 batch-prefetch SELECT on book_embeddings (book_id IN ...), "
+            f"got {len(batch_prefetch_selects)}. "
+            "N+1 pattern may not have been eliminated. "
+            f"Matching queries: {batch_prefetch_selects}"
+        )

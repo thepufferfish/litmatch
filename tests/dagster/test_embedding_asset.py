@@ -944,3 +944,97 @@ class TestDimensionAgnosticDocumentation:
         # Dimensions in metadata should match the model's actual dimensions
         assert result.metadata["dimensions"] == 768
         assert result.metadata["model_name"] == "all-mpnet-base-v2"
+
+
+class TestReviewEmbeddingsDimensionValidation:
+    """Tests that review_embeddings raises dg.Failure for wrong-dim embeddings."""
+
+    def test_wrong_dim_raises_dagster_failure(self) -> None:
+        """review_embeddings should raise dg.Failure when encode returns wrong dims."""
+        from litmatch.defs.assets.embedding import review_embeddings
+        from litmatch.defs.resources.database import DatabaseResource
+        from litmatch.defs.resources.embedding_model import EmbeddingModelResource
+
+        conn_str, _ = _make_test_db()
+        _seed_reviews(conn_str, count=2)
+
+        # Return 128-dim embeddings instead of expected 384-dim
+        mock_st = _make_fake_st(2, dims=128)
+        db_resource = DatabaseResource(connection_string=conn_str)
+        emb_resource = EmbeddingModelResource()
+
+        context = dg.build_asset_context(
+            resources={
+                "database": db_resource,
+                "embedding_model": emb_resource,
+            }
+        )
+
+        with patch("sentence_transformers.SentenceTransformer", return_value=mock_st):
+            with pytest.raises(dg.Failure, match="Embedding dimension mismatch"):
+                review_embeddings(context)
+
+    def test_correct_dim_does_not_raise(self) -> None:
+        """review_embeddings should NOT raise for correct 384-dim embeddings."""
+        from litmatch.defs.assets.embedding import review_embeddings
+        from litmatch.defs.resources.database import DatabaseResource
+        from litmatch.defs.resources.embedding_model import EmbeddingModelResource
+
+        conn_str, _ = _make_test_db()
+        _seed_reviews(conn_str, count=2)
+
+        mock_st = _make_fake_st(2, dims=384)
+        db_resource = DatabaseResource(connection_string=conn_str)
+        emb_resource = EmbeddingModelResource()
+
+        context = dg.build_asset_context(
+            resources={
+                "database": db_resource,
+                "embedding_model": emb_resource,
+            }
+        )
+
+        with patch("sentence_transformers.SentenceTransformer", return_value=mock_st):
+            result = review_embeddings(context)
+
+        assert result.metadata["reviews_encoded"] == 2
+
+
+class TestGenreEmbeddingsDimensionValidation:
+    """Tests that genre_embeddings raises dg.Failure for wrong-dim embeddings."""
+
+    def test_wrong_dim_raises_dagster_failure(self) -> None:
+        """genre_embeddings should raise dg.Failure when encode returns wrong dims."""
+        from litmatch.defs.assets.embedding import genre_embeddings
+        from litmatch.defs.resources.database import DatabaseResource
+        from litmatch.defs.resources.embedding_model import EmbeddingModelResource
+        from backend.db.models import Genre
+
+        conn_str, _ = _make_test_db()
+
+        # Seed a genre with no embedding
+        engine = create_engine(conn_str)
+        with Session(engine) as session:
+            genre = Genre(name="Test Genre")
+            session.add(genre)
+            session.commit()
+        engine.dispose()
+
+        # Return 512-dim embeddings instead of expected 384-dim
+        mock_st = MagicMock()
+        wrong_dim_emb = np.random.RandomState(42).rand(1, 512).astype(np.float32)
+        mock_st.encode.return_value = wrong_dim_emb
+
+        db_resource = DatabaseResource(connection_string=conn_str)
+        emb_resource = EmbeddingModelResource()
+
+        context = dg.build_asset_context(
+            resources={
+                "database": db_resource,
+                "embedding_model": emb_resource,
+            }
+        )
+
+        with patch("sentence_transformers.SentenceTransformer", return_value=mock_st):
+            with pytest.raises(dg.Failure, match="Embedding dimension mismatch"):
+                genre_embeddings(context)
