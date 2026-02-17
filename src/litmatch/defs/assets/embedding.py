@@ -15,6 +15,7 @@ import importlib
 from types import ModuleType
 
 import dagster as dg
+from sqlalchemy import or_
 from sqlmodel import Session, select, update
 
 from litmatch.defs.resources.database import DatabaseResource
@@ -792,6 +793,18 @@ def composite_book_embeddings(
                     BookEmbedding.genre_embedding,
                 )
 
+                # Only fetch rows that have at least one sub-embedding.
+                # Rows with all three sub-embeddings NULL (zero-signal) are
+                # never eligible for composite computation and must be
+                # excluded to prevent infinite re-fetching.
+                stmt = stmt.where(
+                    or_(
+                        BookEmbedding.review_embedding.isnot(None),
+                        BookEmbedding.description_embedding.isnot(None),
+                        BookEmbedding.genre_embedding.isnot(None),
+                    )
+                )
+
                 if not config.force_recompute:
                     # Without force_recompute, rows are committed with embedding set,
                     # so always query from offset 0 (eligible rows shrink each batch)
@@ -808,6 +821,7 @@ def composite_book_embeddings(
                     break
 
                 found_any = True
+                computed_before_batch = total_computed
                 context.log.info(
                     f"Computing composite embeddings for batch {batch_num} "
                     f"({len(rows)} rows, force_recompute={config.force_recompute})"
@@ -874,6 +888,12 @@ def composite_book_embeddings(
                         one_signal += 1
 
                 session.commit()
+
+            # If no rows were computed in this batch (all zero-signal skips),
+            # no progress was made and remaining rows will never change.
+            # Break to avoid an infinite loop re-fetching the same rows.
+            if total_computed == computed_before_batch:
+                break
 
             batch_num += 1
             context.log.info(

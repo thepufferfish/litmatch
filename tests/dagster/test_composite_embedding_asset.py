@@ -317,7 +317,7 @@ class TestCompositeEmbeddingsSignalCombinations:
         np.testing.assert_allclose(stored_arr[768:], expected_genre, rtol=1e-5)
 
     def test_zero_signals_skips_row(self) -> None:
-        """0 signals: row is skipped, embedding stays NULL."""
+        """0 signals: row is excluded by the SQL filter, embedding stays NULL."""
         from litmatch.defs.assets.embedding import composite_book_embeddings
         from litmatch.defs.resources.database import DatabaseResource
 
@@ -330,7 +330,8 @@ class TestCompositeEmbeddingsSignalCombinations:
 
         result = composite_book_embeddings(context)
 
-        assert result.metadata["skipped_no_signal"] == 1
+        # Zero-signal rows are filtered out at query level, never fetched
+        assert result.metadata["skipped_no_signal"] == 0
         assert result.metadata["total_computed"] == 0
 
         stored = _get_composite_embedding(conn_str, book_id)
@@ -631,7 +632,7 @@ class TestCompositeEmbeddingsMetadata:
         b3 = _seed_book(conn_str, "1 Signal Meta")
         _seed_book_embedding_row(conn_str, b3, None, None, _make_unit_vec(seed=6))
 
-        # 1 zero-signal book (should be skipped)
+        # 1 zero-signal book (filtered out at query level, never fetched)
         b4 = _seed_book(conn_str, "0 Signal Meta")
         _seed_book_embedding_row(conn_str, b4, None, None, None)
 
@@ -644,7 +645,7 @@ class TestCompositeEmbeddingsMetadata:
         assert result.metadata["three_signal"] == 1
         assert result.metadata["two_signal"] == 1
         assert result.metadata["one_signal"] == 1
-        assert result.metadata["skipped_no_signal"] == 1
+        assert result.metadata["skipped_no_signal"] == 0
 
     def test_empty_database_returns_zero_metadata(self) -> None:
         """With no BookEmbedding rows, all metadata counts should be zero."""
