@@ -170,14 +170,17 @@ class TestSimilarBooksEndpoint:
 
     @patch("backend.app.main._annotate_books_with_ratings")
     @patch("backend.app.main.find_similar_books_by_genre")
+    @patch("backend.app.main.find_similar_books_by_embedding")
     def test_returns_similar_books_with_genre_fallback(
-        self, mock_find_genre, mock_annotate, mock_author
+        self, mock_find_embedding, mock_find_genre, mock_annotate, mock_author
     ):
-        """When the source book has no embedding, use genre-based fallback."""
+        """When no embedding exists, fall back to genre-based similarity."""
         limiter.enabled = False
         genre = Genre(id=5, name="Mystery")
         source_book = _make_book(1, mock_author, embedding=None, genres=[genre])
         similar_books = [_make_book(2, mock_author), _make_book(3, mock_author)]
+        # Embedding lookup returns empty (no BookEmbedding row), triggering fallback
+        mock_find_embedding.return_value = []
         mock_find_genre.return_value = similar_books
         mock_annotate.return_value = [_make_book_read(2), _make_book_read(3)]
 
@@ -193,6 +196,7 @@ class TestSimilarBooksEndpoint:
             assert response.status_code == 200
             data = response.json()
             assert len(data) == 2
+            mock_find_embedding.assert_called_once()
             mock_find_genre.assert_called_once()
         finally:
             app.dependency_overrides.clear()

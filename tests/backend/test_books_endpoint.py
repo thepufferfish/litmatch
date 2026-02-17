@@ -14,7 +14,7 @@ import os
 os.environ.setdefault("SECRET_KEY", "test-secret-key-for-unit-tests-only")
 os.environ.setdefault("DATABASE_URL", "postgresql://test:test@localhost:5432/testdb")
 
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -23,6 +23,7 @@ from backend.app.main import app, get_current_user, get_session, read_books
 from backend.db.models import (
     Author,
     Book,
+    Genre,
     User,
 )
 
@@ -451,3 +452,212 @@ class TestQueryHelpers:
         filter_clause, rank_expr = build_fts_filter("test & query | special")
         assert filter_clause is not None
         assert rank_expr is not None
+
+
+# ---------------------------------------------------------------------------
+# Tests: GET /books/{id}/similar endpoint
+# ---------------------------------------------------------------------------
+
+
+def _make_book(book_id: int, author: Author, genres: list[Genre] | None = None) -> Book:
+    """Helper to create a Book with optional genres for testing."""
+    book = Book(
+        id=book_id,
+        title=f"Book {book_id}",
+        author_id=author.id,
+        publisher_id=None,
+        publish_date=None,
+        description=f"Description for book {book_id}",
+        url=f"https://example.com/book{book_id}",
+        cover=None,
+        author=author,
+    )
+    book.genres = genres or []
+    return book
+
+
+class TestSimilarBooksEndpoint:
+    """Tests for GET /books/{id}/similar endpoint."""
+
+    @pytest.fixture
+    def similar_client(self):
+        """TestClient with session override but no auth (endpoint is public)."""
+        session = MagicMock()
+
+        def _override_get_session():
+            yield session
+
+        app.dependency_overrides[get_session] = _override_get_session
+        test_client = TestClient(app, raise_server_exceptions=False)
+        yield test_client, session
+        app.dependency_overrides.clear()
+
+    def test_similar_books_returns_404_for_missing_book(self, similar_client):
+        """GET /books/9999/similar should return 404 when book does not exist."""
+        client, session = similar_client
+        session.exec.return_value.first.return_value = None
+
+        response = client.get("/books/9999/similar")
+        assert response.status_code == 404
+
+    def test_similar_books_uses_embedding_when_available(self, similar_client):
+        """When embedding exists, result comes from find_similar_books_by_embedding."""
+        client, session = similar_client
+        author = Author(id=1, name="Author A")
+        genre = Genre(id=1, name="Fiction")
+        book = _make_book(1, author, genres=[genre])
+
+        # Session returns the book on lookup
+        session.exec.return_value.first.return_value = book
+
+        similar_book = _make_book(2, author, genres=[genre])
+
+        with patch(
+            "backend.app.main.find_similar_books_by_embedding",
+            return_value=[similar_book],
+        ) as mock_embed, patch(
+            "backend.app.main.find_similar_books_by_genre",
+            return_value=[],
+        ) as mock_genre:
+            # _annotate_books_with_ratings calls session.exec too -- mock it
+            session.exec.return_value.all.return_value = []
+            response = client.get("/books/1/similar")
+
+        assert response.status_code == 200
+        mock_embed.assert_called_once()
+        mock_genre.assert_not_called()
+
+    def test_similar_books_falls_back_to_genre_when_no_embedding(self, similar_client):
+        """When no embedding exists, falls back to find_similar_books_by_genre."""
+        client, session = similar_client
+        author = Author(id=1, name="Author A")
+        genre = Genre(id=1, name="Fiction")
+        book = _make_book(1, author, genres=[genre])
+
+        session.exec.return_value.first.return_value = book
+
+        similar_book = _make_book(3, author, genres=[genre])
+
+        with patch(
+            "backend.app.main.find_similar_books_by_embedding",
+            return_value=[],
+        ) as mock_embed, patch(
+            "backend.app.main.find_similar_books_by_genre",
+            return_value=[similar_book],
+        ) as mock_genre:
+            session.exec.return_value.all.return_value = []
+            response = client.get("/books/1/similar")
+
+        assert response.status_code == 200
+        mock_embed.assert_called_once()
+        mock_genre.assert_called_once()
+
+    def test_similar_books_returns_empty_list_when_no_embedding_and_no_genres(
+        self, similar_client
+    ):
+        """Book with no embedding and no genres should return 200 with empty list."""
+        client, session = similar_client
+        author = Author(id=1, name="Author A")
+        book = _make_book(1, author, genres=[])
+
+        session.exec.return_value.first.return_value = book
+
+        with patch(
+            "backend.app.main.find_similar_books_by_embedding",
+            return_value=[],
+        ), patch(
+            "backend.app.main.find_similar_books_by_genre",
+            return_value=[],
+        ):
+            session.exec.return_value.all.return_value = []
+            response = client.get("/books/1/similar")
+
+        assert response.status_code == 200
+        assert response.json() == []
+
+    def test_similar_books_does_not_reference_book_embedding_attribute(self):
+        """The get_similar_books handler must NOT reference book.embedding."""
+        import inspect
+        from backend.app.main import get_similar_books
+
+        source = inspect.getsource(get_similar_books)
+        assert "book.embedding" not in source, (
+            "get_similar_books references the removed book.embedding attribute"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Tests: GET /genres/ should not leak embedding field
+# ---------------------------------------------------------------------------
+
+
+class TestGenresEndpointNoEmbeddingLeak:
+    """Tests that /genres/ does not expose the internal embedding column."""
+
+    @pytest.fixture
+    def genres_client(self):
+        """TestClient with a session that returns one Genre with an embedding."""
+        genre_with_embedding = Genre(id=1, name="Fiction")
+        # Simulate an embedding present in the DB row
+        genre_with_embedding.embedding = [0.1, 0.2, 0.3]
+
+        session = MagicMock()
+        session.exec.return_value.all.return_value = [genre_with_embedding]
+
+        def _override_get_session():
+            yield session
+
+        app.dependency_overrides[get_session] = _override_get_session
+        test_client = TestClient(app, raise_server_exceptions=False)
+        yield test_client
+        app.dependency_overrides.clear()
+
+    def test_genres_endpoint_returns_200(self, genres_client):
+        """GET /genres/ should return 200."""
+        response = genres_client.get("/genres/")
+        assert response.status_code == 200
+
+    def test_genres_response_has_no_embedding_field(self, genres_client):
+        """GET /genres/ response should NOT contain an embedding field."""
+        response = genres_client.get("/genres/")
+        assert response.status_code == 200
+        data = response.json()
+        assert isinstance(data, list)
+        for genre_item in data:
+            assert "embedding" not in genre_item, (
+                f"Genre response leaks embedding field: {genre_item}"
+            )
+
+    def test_genres_response_contains_id_and_name(self, genres_client):
+        """GET /genres/ response items should have id and name fields."""
+        response = genres_client.get("/genres/")
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data) > 0
+        for genre_item in data:
+            assert "id" in genre_item
+            assert "name" in genre_item
+
+    def test_genres_openapi_response_model_uses_genre_simple(self):
+        """The /genres/ route should use GenreSimple as response model (no embedding)."""
+        schema = app.openapi()
+        genres_path = schema["paths"].get("/genres/", {})
+        get_op = genres_path.get("get", {})
+        # Get the response schema reference
+        responses = get_op.get("responses", {})
+        ok_response = responses.get("200", {})
+        content = ok_response.get("content", {})
+        json_content = content.get("application/json", {})
+        schema_ref = json_content.get("schema", {})
+        # The items ref should point to GenreSimple, not Genre
+        ref_str = str(schema_ref)
+        assert "Genre" in ref_str  # Some Genre type is referenced
+        # Verify GenreSimple schema has only id and name (no embedding)
+        components = schema.get("components", {})
+        schemas = components.get("schemas", {})
+        genre_simple_schema = schemas.get("GenreSimple")
+        if genre_simple_schema:
+            props = genre_simple_schema.get("properties", {})
+            assert "embedding" not in props, (
+                "GenreSimple schema should not have an embedding property"
+            )
