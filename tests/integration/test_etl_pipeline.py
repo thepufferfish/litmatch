@@ -17,6 +17,13 @@ GRAPHQL_PATH = "/graphql"
 # The ETL pipeline job name as defined in the sensor module
 ETL_JOB_NAME = "etl_pipeline"
 
+# Job name for the standalone embedding pipeline
+EMBEDDING_PIPELINE_JOB_NAME = "embedding_pipeline"
+
+# Repository location for GraphQL queries
+REPO_LOCATION = "litmatch.definitions"
+REPO_NAME = "__repository__"
+
 # Maximum time to wait for a pipeline run to complete
 RUN_TIMEOUT_SECONDS = 180
 RUN_POLL_INTERVAL_SECONDS = 5
@@ -244,3 +251,158 @@ class TestEtlPipelineExecution:
         assert response.status_code == 200
         reviews = response.json()
         assert len(reviews) > 0
+
+
+def _query_asset_graph(dagster_url: str, http_client: httpx.Client) -> dict:
+    """Query the Dagster asset graph for all registered assets.
+
+    Args:
+        dagster_url: Base URL of the Dagster webserver.
+        http_client: httpx client for making requests.
+
+    Returns:
+        The parsed JSON data from the GraphQL response.
+    """
+    query = """
+    query AssetGraph {
+        assetNodes {
+            assetKey {
+                path
+            }
+            description
+        }
+    }
+    """
+    response = http_client.post(
+        f"{dagster_url}{GRAPHQL_PATH}",
+        json={"query": query},
+        timeout=30,
+    )
+    assert response.status_code == 200, f"Asset graph query failed: {response.text}"
+    return response.json()
+
+
+def _query_job_asset_keys(
+    dagster_url: str,
+    http_client: httpx.Client,
+    job_name: str,
+) -> list[str]:
+    """Query the assets selected by a specific Dagster job.
+
+    Args:
+        dagster_url: Base URL of the Dagster webserver.
+        http_client: httpx client for making requests.
+        job_name: The name of the job to inspect.
+
+    Returns:
+        List of flattened asset key paths (e.g., ["review_embeddings"]).
+    """
+    query = """
+    query JobAssets($selector: PipelineSelector!) {
+        pipelineOrError(params: $selector) {
+            __typename
+            ... on Pipeline {
+                solids {
+                    name
+                }
+            }
+        }
+    }
+    """
+    variables = {
+        "selector": {
+            "pipelineName": job_name,
+            "repositoryLocationName": REPO_LOCATION,
+            "repositoryName": REPO_NAME,
+        }
+    }
+    response = http_client.post(
+        f"{dagster_url}{GRAPHQL_PATH}",
+        json={"query": query, "variables": variables},
+        timeout=30,
+    )
+    assert response.status_code == 200, f"Job query failed: {response.text}"
+    data = response.json()
+    pipeline = data.get("data", {}).get("pipelineOrError", {})
+    solids = pipeline.get("solids", [])
+    return [s["name"] for s in solids]
+
+
+class TestEmbeddingAssetRegistration:
+    """Tests that the new rich embedding assets appear in the Dagster asset graph."""
+
+    # All new assets introduced by the rich embedding pipeline
+    EXPECTED_EMBEDDING_ASSETS = {
+        "genre_embeddings",
+        "book_description_embeddings",
+        "book_genre_embeddings",
+        "composite_book_embeddings",
+    }
+
+    # Pre-existing embedding assets that must still be present
+    EXISTING_EMBEDDING_ASSETS = {
+        "review_embeddings",
+        "book_embeddings",
+    }
+
+    def test_new_embedding_assets_in_asset_graph(
+        self, dagster_url: str, http_client: httpx.Client
+    ) -> None:
+        """All four new embedding assets should appear in the Dagster asset graph."""
+        data = _query_asset_graph(dagster_url, http_client)
+        asset_nodes = data.get("data", {}).get("assetNodes", [])
+
+        # Flatten each asset's key path into a single string
+        registered_keys = {
+            "/".join(node["assetKey"]["path"]) for node in asset_nodes
+        }
+
+        for asset_key in self.EXPECTED_EMBEDDING_ASSETS:
+            assert asset_key in registered_keys, (
+                f"Expected embedding asset '{asset_key}' not found in asset graph. "
+                f"Registered assets: {sorted(registered_keys)}"
+            )
+
+    def test_existing_embedding_assets_still_registered(
+        self, dagster_url: str, http_client: httpx.Client
+    ) -> None:
+        """Pre-existing review and book embedding assets remain in the asset graph."""
+        data = _query_asset_graph(dagster_url, http_client)
+        asset_nodes = data.get("data", {}).get("assetNodes", [])
+
+        registered_keys = {
+            "/".join(node["assetKey"]["path"]) for node in asset_nodes
+        }
+
+        for asset_key in self.EXISTING_EMBEDDING_ASSETS:
+            assert asset_key in registered_keys, (
+                f"Existing embedding asset '{asset_key}' missing from asset graph"
+            )
+
+    def test_embedding_pipeline_job_includes_new_assets(
+        self, dagster_url: str, http_client: httpx.Client
+    ) -> None:
+        """The embedding_pipeline job should include all new embedding assets."""
+        asset_names = _query_job_asset_keys(
+            dagster_url, http_client, EMBEDDING_PIPELINE_JOB_NAME
+        )
+
+        for asset_key in self.EXPECTED_EMBEDDING_ASSETS:
+            assert asset_key in asset_names, (
+                f"Expected asset '{asset_key}' not found in embedding_pipeline job. "
+                f"Job assets: {sorted(asset_names)}"
+            )
+
+    def test_etl_pipeline_job_includes_new_assets(
+        self, dagster_url: str, http_client: httpx.Client
+    ) -> None:
+        """The etl_pipeline job should also include all new embedding assets."""
+        asset_names = _query_job_asset_keys(
+            dagster_url, http_client, ETL_JOB_NAME
+        )
+
+        for asset_key in self.EXPECTED_EMBEDDING_ASSETS:
+            assert asset_key in asset_names, (
+                f"Expected asset '{asset_key}' not found in etl_pipeline job. "
+                f"Job assets: {sorted(asset_names)}"
+            )
