@@ -443,9 +443,8 @@ def get_similar_books(
     if not book:
         raise HTTPException(status_code=404, detail="Book not found")
 
-    if book.embedding is not None:
-        similar = find_similar_books_by_embedding(session, book, limit=limit)
-    else:
+    similar = find_similar_books_by_embedding(session, book, limit=limit)
+    if not similar:
         genre_ids = [g.id for g in book.genres]
         similar = find_similar_books_by_genre(
             session, book_id=book.id, genre_ids=genre_ids, limit=limit
@@ -472,7 +471,7 @@ def read_reviews(*, session: Session = Depends(get_session), book_id: int):
     return reviews
 
 
-@app.get("/genres/", response_model=list[Genre])
+@app.get("/genres/", response_model=list[GenreSimple])
 def read_genres(*, session: Session = Depends(get_session)):
     genres = session.exec(select(Genre)).all()
     return genres
