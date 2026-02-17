@@ -16,6 +16,10 @@ etl_pipeline = dg.define_asset_job(
         "cleanup_staging",
         "review_embeddings",
         "book_embeddings",
+        "genre_embeddings",
+        "book_description_embeddings",
+        "book_genre_embeddings",
+        "composite_book_embeddings",
     ),
     description="Full ETL pipeline: extract, validate, transform, load books, cleanup staging, and generate embeddings.",
 )
@@ -30,6 +34,13 @@ crawl_job = dg.define_asset_job(
 
 embedding_pipeline = dg.define_asset_job(
     name="embedding_pipeline",
-    selection=dg.AssetSelection.assets("review_embeddings", "book_embeddings"),
+    selection=dg.AssetSelection.assets(
+        "review_embeddings",
+        "book_embeddings",
+        "genre_embeddings",
+        "book_description_embeddings",
+        "book_genre_embeddings",
+        "composite_book_embeddings",
+    ),
     description="Generate review and book embeddings for the recommender system.",
 )

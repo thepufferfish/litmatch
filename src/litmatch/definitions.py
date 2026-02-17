@@ -3,7 +3,14 @@ import os
 import dagster as dg
 
 from litmatch.defs.assets.crawl import crawl_books
-from litmatch.defs.assets.embedding import book_embeddings, review_embeddings
+from litmatch.defs.assets.embedding import (
+    book_description_embeddings,
+    book_embeddings,
+    book_genre_embeddings,
+    composite_book_embeddings,
+    genre_embeddings,
+    review_embeddings,
+)
 from litmatch.defs.assets.extract import raw_books
 from litmatch.defs.assets.load import load_books
 from litmatch.defs.assets.maintenance import cleanup_staging
@@ -62,6 +69,10 @@ def defs():
             cleanup_staging,
             review_embeddings,
             book_embeddings,
+            genre_embeddings,
+            book_description_embeddings,
+            book_genre_embeddings,
+            composite_book_embeddings,
         ],
         jobs=[etl_pipeline, crawl_job, embedding_pipeline],
         schedules=[weekly_crawl_schedule],
