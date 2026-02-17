@@ -39,7 +39,8 @@ class TestGetStagingDataState:
         """Should return state with job_id, max_id, and row_count."""
         mock_engine = Mock()
         mock_conn = MagicMock()
-        mock_engine.connect.return_value.__enter__.return_value = mock_conn
+        mock_engine.connect.return_value.__enter__ = Mock(return_value=mock_conn)
+        mock_engine.connect.return_value.__exit__ = Mock(return_value=False)
 
         # Simulate query result: (job_id, max_id, row_count)
         mock_result = Mock()
@@ -58,7 +59,8 @@ class TestGetStagingDataState:
         """Should return state for the most recent crawl job."""
         mock_engine = Mock()
         mock_conn = MagicMock()
-        mock_engine.connect.return_value.__enter__.return_value = mock_conn
+        mock_engine.connect.return_value.__enter__ = Mock(return_value=mock_conn)
+        mock_engine.connect.return_value.__exit__ = Mock(return_value=False)
 
         # The query should order by created_at DESC and get the latest
         mock_result = Mock()
@@ -76,7 +78,8 @@ class TestGetStagingDataState:
         """Should count only rows belonging to the latest crawl_job_id."""
         mock_engine = Mock()
         mock_conn = MagicMock()
-        mock_engine.connect.return_value.__enter__.return_value = mock_conn
+        mock_engine.connect.return_value.__enter__ = Mock(return_value=mock_conn)
+        mock_engine.connect.return_value.__exit__ = Mock(return_value=False)
 
         # Simulate multiple jobs, but we get only the latest job's stats
         mock_result = Mock()
@@ -98,15 +101,17 @@ class TestFetchStagedItemsSinceId:
         """Should fetch all rows for job when after_id=0."""
         mock_engine = Mock()
         mock_conn = MagicMock()
-        mock_engine.connect.return_value.__enter__.return_value = mock_conn
+        mock_engine.connect.return_value.__enter__ = Mock(return_value=mock_conn)
+        mock_engine.connect.return_value.__exit__ = Mock(return_value=False)
 
         # Simulate query returning 3 items
-        mock_result = Mock()
-        mock_result.__iter__.return_value = [
+        rows = [
             ({"title": "Book 0", "author": "Author 0"},),
             ({"title": "Book 1", "author": "Author 1"},),
             ({"title": "Book 2", "author": "Author 2"},),
         ]
+        mock_result = MagicMock()
+        mock_result.__iter__ = Mock(return_value=iter(rows))
         mock_conn.execute.return_value = mock_result
 
         items = fetch_staged_items_since_id(
@@ -122,14 +127,16 @@ class TestFetchStagedItemsSinceId:
         """Should fetch only rows with id > after_id."""
         mock_engine = Mock()
         mock_conn = MagicMock()
-        mock_engine.connect.return_value.__enter__.return_value = mock_conn
+        mock_engine.connect.return_value.__enter__ = Mock(return_value=mock_conn)
+        mock_engine.connect.return_value.__exit__ = Mock(return_value=False)
 
         # Simulate query returning rows 6-10 (5 rows)
-        mock_result = Mock()
-        mock_result.__iter__.return_value = [
+        rows = [
             ({"title": f"Book {i}", "author": f"Author {i}"},)
             for i in range(5, 10)
         ]
+        mock_result = MagicMock()
+        mock_result.__iter__ = Mock(return_value=iter(rows))
         mock_conn.execute.return_value = mock_result
 
         items = fetch_staged_items_since_id(
@@ -145,11 +152,12 @@ class TestFetchStagedItemsSinceId:
         """Should return empty list when after_id >= max_id."""
         mock_engine = Mock()
         mock_conn = MagicMock()
-        mock_engine.connect.return_value.__enter__.return_value = mock_conn
+        mock_engine.connect.return_value.__enter__ = Mock(return_value=mock_conn)
+        mock_engine.connect.return_value.__exit__ = Mock(return_value=False)
 
         # Simulate query returning no rows
-        mock_result = Mock()
-        mock_result.__iter__.return_value = []
+        mock_result = MagicMock()
+        mock_result.__iter__ = Mock(return_value=iter([]))
         mock_conn.execute.return_value = mock_result
 
         items = fetch_staged_items_since_id(
@@ -162,14 +170,16 @@ class TestFetchStagedItemsSinceId:
         """Should only fetch rows for the specified crawl_job_id."""
         mock_engine = Mock()
         mock_conn = MagicMock()
-        mock_engine.connect.return_value.__enter__.return_value = mock_conn
+        mock_engine.connect.return_value.__enter__ = Mock(return_value=mock_conn)
+        mock_engine.connect.return_value.__exit__ = Mock(return_value=False)
 
         # Simulate query filtered by job2
-        mock_result = Mock()
-        mock_result.__iter__.return_value = [
+        rows = [
             ({"title": f"Book {i}", "author": f"Author {i}"},)
             for i in range(3)
         ]
+        mock_result = MagicMock()
+        mock_result.__iter__ = Mock(return_value=iter(rows))
         mock_conn.execute.return_value = mock_result
 
         items = fetch_staged_items_since_id(mock_engine, "job-2", after_id=0)
@@ -181,14 +191,16 @@ class TestFetchStagedItemsSinceId:
         """Should return items ordered by row ID ascending."""
         mock_engine = Mock()
         mock_conn = MagicMock()
-        mock_engine.connect.return_value.__enter__.return_value = mock_conn
+        mock_engine.connect.return_value.__enter__ = Mock(return_value=mock_conn)
+        mock_engine.connect.return_value.__exit__ = Mock(return_value=False)
 
         # Simulate query returning items in ID order
-        mock_result = Mock()
-        mock_result.__iter__.return_value = [
+        rows = [
             ({"title": f"Book {i}", "author": f"Author {i}"},)
             for i in range(5)
         ]
+        mock_result = MagicMock()
+        mock_result.__iter__ = Mock(return_value=iter(rows))
         mock_conn.execute.return_value = mock_result
 
         items = fetch_staged_items_since_id(
