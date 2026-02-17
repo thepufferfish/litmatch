@@ -2,7 +2,7 @@
 from sqlalchemy.orm import selectinload
 from sqlmodel import Session, func, select
 
-from backend.db.models import Book, BookGenreLink, Review
+from backend.db.models import Book, BookEmbedding, BookGenreLink, Review
 
 
 def build_rating_subquery():
@@ -43,9 +43,9 @@ def find_similar_books_by_embedding(
 ) -> list[Book]:
     """Find similar books using pgvector cosine distance on embeddings.
 
-    Uses the source book's embedding to find nearest neighbors by cosine
-    distance. Only considers books that have embeddings and excludes the
-    source book itself.
+    Uses the source book's composite embedding (or review_embedding as fallback)
+    to find nearest neighbors by cosine distance. Only considers books that have
+    embeddings and excludes the source book itself.
 
     Args:
         session: Active database session.
@@ -55,16 +55,45 @@ def find_similar_books_by_embedding(
     Returns:
         List of Book objects ordered by cosine similarity (most similar first).
     """
+    # Get the source book's embedding
+    source_embedding_row = session.exec(
+        select(BookEmbedding)
+        .where(BookEmbedding.book_id == book.id)
+    ).first()
+
+    if source_embedding_row is None:
+        return []
+
+    # Use composite embedding if available, otherwise use review_embedding
+    source_embedding = (
+        source_embedding_row.embedding
+        if source_embedding_row.embedding is not None
+        else source_embedding_row.review_embedding
+    )
+
+    if source_embedding is None:
+        return []
+
+    # Determine which embedding column to search based on source embedding dimensions
+    embedding_dim = len(source_embedding)
+    if embedding_dim == 1152:
+        embedding_col = BookEmbedding.embedding
+        embedding_filter = BookEmbedding.embedding.isnot(None)
+    else:
+        embedding_col = BookEmbedding.review_embedding
+        embedding_filter = BookEmbedding.review_embedding.isnot(None)
+
     stmt = (
         select(Book)
-        .where(Book.embedding.isnot(None))
+        .join(BookEmbedding, Book.id == BookEmbedding.book_id)
+        .where(embedding_filter)
         .where(Book.id != book.id)
         .options(
             selectinload(Book.author),
             selectinload(Book.publisher),
             selectinload(Book.genres),
         )
-        .order_by(Book.embedding.cosine_distance(book.embedding))
+        .order_by(embedding_col.cosine_distance(source_embedding))
         .limit(limit)
     )
     return list(session.exec(stmt).all())
