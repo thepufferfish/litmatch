@@ -46,10 +46,6 @@ class Book(SQLModel, table=True):
         default_factory=lambda: datetime.now(timezone.utc),
         sa_column=Column(TIMESTAMP(timezone=True)),
     )
-    embedding: list[float] | None = Field(
-        default=None,
-        sa_column=Column(Vector(384)),
-    )
     search_vector: str | None = Field(
         default=None,
         sa_column=Column(TSVECTOR, nullable=True),
@@ -61,10 +57,18 @@ class Book(SQLModel, table=True):
     reviews: list['Review'] = Relationship(back_populates='book')
     user_ratings: list['UserRating'] = Relationship(back_populates='book')
     user_book_lists: list['UserBookList'] = Relationship(back_populates='book')
+    book_embedding: 'BookEmbedding' = Relationship(
+        back_populates='book',
+        sa_relationship_kwargs={'cascade': 'all, delete-orphan'},
+    )
 
 class Genre(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
     name: str = Field(unique=True)
+    embedding: list[float] | None = Field(
+        default=None,
+        sa_column=Column(Vector(384)),
+    )
 
     books: list['Book'] = Relationship(back_populates='genres', link_model=BookGenreLink)
 
@@ -135,6 +139,35 @@ class Publication(SQLModel, table=True):
     name: str = Field(unique=True)
 
     reviews: list['Review'] = Relationship(back_populates='publication')
+
+class BookEmbedding(SQLModel, table=True):
+    __tablename__ = "book_embeddings"
+
+    id: int | None = Field(default=None, primary_key=True)
+    book_id: int = Field(foreign_key='book.id', unique=True, index=True)
+    review_embedding: list[float] | None = Field(
+        default=None,
+        sa_column=Column(Vector(384)),
+    )
+    description_embedding: list[float] | None = Field(
+        default=None,
+        sa_column=Column(Vector(384)),
+    )
+    genre_embedding: list[float] | None = Field(
+        default=None,
+        sa_column=Column(Vector(384)),
+    )
+    embedding: list[float] | None = Field(
+        default=None,
+        sa_column=Column(Vector(1152)),
+    )
+    updated_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        sa_column=Column(TIMESTAMP(timezone=True)),
+    )
+
+    book: Book = Relationship(back_populates='book_embedding')
+
 
 class Review(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
