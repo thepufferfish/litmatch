@@ -9,6 +9,15 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+# Source .env early so BACKUP_DIR / LOG_FILE overrides take effect
+if [[ -f "${PROJECT_DIR}/.env" ]]; then
+    set -a
+    # shellcheck source=/dev/null
+    source "${PROJECT_DIR}/.env"
+    set +a
+fi
+
 BACKUP_DIR="${BACKUP_DIR:-/var/backups/litmatch}"
 LOG_FILE="${LOG_FILE:-/var/log/litmatch-backup.log}"
 RETENTION_DAYS="${BACKUP_RETENTION_DAYS:-14}"

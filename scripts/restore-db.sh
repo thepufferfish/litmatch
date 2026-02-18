@@ -8,6 +8,15 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+# Source .env early so LOG_FILE override takes effect
+if [[ -f "${PROJECT_DIR}/.env" ]]; then
+    set -a
+    # shellcheck source=/dev/null
+    source "${PROJECT_DIR}/.env"
+    set +a
+fi
+
 LOG_FILE="${LOG_FILE:-/var/log/litmatch-backup.log}"
 COMPOSE="podman compose --env-file ${PROJECT_DIR}/.env -f ${PROJECT_DIR}/compose.yaml"
 
